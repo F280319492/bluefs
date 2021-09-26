@@ -32,9 +32,14 @@ struct aio_t {
     void pread(uint64_t _offset, uint64_t len) {
         offset = _offset;
         length = len;
-        bufferptr p = buffer::create_page_aligned(length);
-        io_prep_pread(&iocb, fd, p.c_str(), length, offset);
-        bl.append(std::move(p));
+        char* p = (char*)aligned_malloc(len, block_size);
+        if (!p) {
+            r = -errno;
+            derr << __func__ << " aligned_malloc failed!" << dendl;
+            return;
+        }
+        io_prep_pread(&iocb, fd, p, length, offset);
+        bl.append(p, len, true);
     }
 
     long get_return_value() {

@@ -17,6 +17,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <vector>
 
 #include "KernelDevice.h"
 #include "debug.h"
@@ -206,7 +207,8 @@ int KernelDevice::_aio_start()
             }
             return r;
         }
-        aio_thread.create("bstore_aio");
+        aio_thread = std::thread{ &KernelDevice::_aio_thread};
+        pthread_setname_np(read_thread.native_handle(), "bluefs_aio");
     }
     return 0;
 }
@@ -247,10 +249,6 @@ void KernelDevice::_aio_thread()
             dout(30) << __func__ << " got " << r << " completed aios" << dendl;
             for (int i = 0; i < r; ++i) {
                 IOContext *ioc = static_cast<IOContext*>(aio[i]->priv);
-                if (aio[i]->queue_item.is_linked()) {
-                    std::lock_guard<std::mutex> l(debug_queue_lock);
-                    debug_aio_unlink(*aio[i]);
-                }
 
                 // set flag indicating new ios have completed.  we do this *before*
                 // any completion or notifications so that any user flush() that
@@ -341,7 +339,7 @@ int KernelDevice::_sync_write(uint64_t off, bufferlist &bl, bool buffered)
     dout(5) << __func__ << " 0x" << std::hex << off << "~" << len
         << std::dec << " buffered" << dendl;
 
-    vector<iovec> iov;
+    std::vector<iovec> iov;
     bl.prepare_iov(&iov);
     int r = ::pwritev(buffered ? fd_buffered : fd_direct,
                 &iov[0], iov.size(), off);
@@ -355,9 +353,9 @@ int KernelDevice::_sync_write(uint64_t off, bufferlist &bl, bool buffered)
         // initiate IO and wait till it completes
         r = ::sync_file_range(fd_buffered, off, len, SYNC_FILE_RANGE_WRITE|SYNC_FILE_RANGE_WAIT_AFTER|SYNC_FILE_RANGE_WAIT_BEFORE);
         if (r < 0) {
-        r = -errno;
-        derr << __func__ << " sync_file_range error: " << cpp_strerror(r) << dendl;
-        return r;
+            r = -errno;
+            derr << __func__ << " sync_file_range error: " << cpp_strerror(r) << dendl;
+            return r;
         }
     }
 
@@ -382,7 +380,7 @@ int KernelDevice::write(
     assert(off + len <= size);
 
     if ((!buffered || bl.get_num_buffers() >= IOV_MAX) &&
-        bl.rebuild_aligned_size_and_memory(block_size, block_size, IOV_MAX)) {
+        bl.rebuild_aligned_size_and_memory(block_size)) {
         dout(20) << __func__ << " rebuilding buffer to be aligned" << dendl;
     }
 
@@ -406,7 +404,7 @@ int KernelDevice::aio_write(
     assert(off + len <= size);
 
     if ((!buffered || bl.get_num_buffers() >= IOV_MAX) &&
-        bl.rebuild_aligned_size_and_memory(block_size, block_size, IOV_MAX)) {
+        bl.rebuild_aligned_size_and_memory(block_size)) {
         dout(20) << __func__ << " rebuilding buffer to be aligned" << dendl;
     }
 
@@ -418,41 +416,21 @@ int KernelDevice::aio_write(
             ++ioc->num_pending;
             auto& aio = ioc->pending_aios.back();
             bl.prepare_iov(&aio.iov);
-            aio.bl.claim_append(bl);
+            aio.bl.append(bl);
             aio.pwritev(off, len);
             dout(30) << aio << dendl;
             dout(5) << __func__ << " 0x" << std::hex << off << "~" << len
                 << std::dec << " aio " << &aio << dendl;
         } else {
-            // write in RW_IO_MAX-sized chunks
-            uint64_t prev_len = 0;
-            while (prev_len < bl.length()) {
-                bufferlist tmp;
-                if (prev_len + RW_IO_MAX < bl.length()) {
-                    tmp.substr_of(bl, prev_len, RW_IO_MAX);
-                } else {
-                    tmp.substr_of(bl, prev_len, bl.length() - prev_len);
-                }
-                auto len = tmp.length();
-                ioc->pending_aios.push_back(aio_t(ioc, fd_direct));
-                ++ioc->num_pending;
-                auto& aio = ioc->pending_aios.back();
-                tmp.prepare_iov(&aio.iov);
-                aio.bl.claim_append(tmp);
-                aio.pwritev(off + prev_len, len);
-                dout(30) << aio << dendl;
-                dout(5) << __func__ << " 0x" << std::hex << off + prev_len
-                    << "~" << len
-                    << std::dec << " aio " << &aio << " (piece)" << dendl;
-                prev_len += len;
-            }
+            //TODO
+            return ENOTSUP;
         }
     } else
 #endif
     {
         int r = _sync_write(off, bl, buffered);
         if (r < 0)
-        return r;
+            return r;
     }
     return 0;
 }
@@ -488,10 +466,9 @@ int KernelDevice::read(uint64_t off, uint64_t len, bufferlist *pbl,
         goto out;
     }
     assert((uint64_t)r == len);
-    pbl->append(p, len);
+    pbl->append(p, len, true);
 
 out:
-    aligned_free(p);
     return r < 0 ? r : 0;
 }
 
