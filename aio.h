@@ -1,6 +1,5 @@
-#pragma once
-
-#include "acconfig.h"
+#ifndef AIO_H
+#define AIO_H
 
 #define HAVE_LIBAIO
 #ifdef HAVE_LIBAIO
@@ -70,18 +69,18 @@ struct aio_queue_t {
         assert(ctx == 0);
         int r = io_setup(max_iodepth, &ctx);
         if (r < 0) {
-        if (ctx) {
-        io_destroy(ctx);
-        ctx = 0;
-        }
+            if (ctx) {
+                io_destroy(ctx);
+                ctx = 0;
+            }
         }
         return r;
     }
     void shutdown() {
         if (ctx) {
-        int r = io_destroy(ctx);
-        assert(r == 0);
-        ctx = 0;
+            int r = io_destroy(ctx);
+            assert(r == 0);
+            ctx = 0;
         }
     }
 
@@ -92,3 +91,5 @@ struct aio_queue_t {
 };
 
 #endif
+
+#endif //AIO_H

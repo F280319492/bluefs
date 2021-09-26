@@ -21,17 +21,12 @@
 #include "KernelDevice.h"
 #include "debug.h"
 
-#define dout_context cct
-#define dout_subsys ceph_subsys_bdev
-#undef dout_prefix
-#define dout_prefix *_dout << "bdev(" << this << " " << path << ") "
-
-KernelDevice::KernelDevice(CephContext* cct, aio_callback_t cb, void *cbpriv)
+KernelDevice::KernelDevice(BlueFSContext* cct, aio_callback_t cb, void *cbpriv)
   : BlockDevice(cct),
     fd_direct(-1),
     fd_buffered(-1),
     size(0), block_size(0),
-    fs(NULL), aio(false), dio(false),
+    aio(false), dio(false),
     aio_queue(cct->_conf->bdev_aio_max_queue_depth),
     aio_callback(cb),
     aio_callback_priv(cbpriv),
@@ -166,74 +161,73 @@ void KernelDevice::close()
 
 int KernelDevice::flush()
 {
-  // protect flush with a mutex.  note that we are not really protecting
-  // data here.  instead, we're ensuring that if any flush() caller
-  // sees that io_since_flush is true, they block any racing callers
-  // until the flush is observed.  that allows racing threads to be
-  // calling flush while still ensuring that *any* of them that got an
-  // aio completion notification will not return before that aio is
-  // stable on disk: whichever thread sees the flag first will block
-  // followers until the aio is stable.
-  std::lock_guard<std::mutex> l(flush_mutex);
+    // protect flush with a mutex.  note that we are not really protecting
+    // data here.  instead, we're ensuring that if any flush() caller
+    // sees that io_since_flush is true, they block any racing callers
+    // until the flush is observed.  that allows racing threads to be
+    // calling flush while still ensuring that *any* of them that got an
+    // aio completion notification will not return before that aio is
+    // stable on disk: whichever thread sees the flag first will block
+    // followers until the aio is stable.
+    std::lock_guard<std::mutex> l(flush_mutex);
 
-  bool expect = true;
-  if (!io_since_flush.compare_exchange_strong(expect, false)) {
-    dout(10) << __func__ << " no-op (no ios since last flush), flag is "
-	     << (int)io_since_flush.load() << dendl;
-    return 0;
-  }
+    bool expect = true;
+    if (!io_since_flush.compare_exchange_strong(expect, false)) {
+        dout(10) << __func__ << " no-op (no ios since last flush), flag is "
+            << (int)io_since_flush.load() << dendl;
+        return 0;
+    }
 
-  dout(10) << __func__ << " start" << dendl;
-  utime_t start = ceph_clock_now();
-  int r = ::fdatasync(fd_direct);
-  utime_t end = ceph_clock_now();
-  utime_t dur = end - start;
-  if (r < 0) {
-    r = -errno;
-    derr << __func__ << " fdatasync got: " << cpp_strerror(r) << dendl;
-    ceph_abort();
-  }
-  dout(5) << __func__ << " in " << dur << dendl;;
-  return r;
+    dout(10) << __func__ << " start" << dendl;
+    utime_t start = clock_now();
+    int r = ::fdatasync(fd_direct);
+    utime_t end = clock_now();
+    utime_t dur = end - start;
+    if (r < 0) {
+        r = -errno;
+        derr << __func__ << " fdatasync got: " << cpp_strerror(r) << dendl;
+        abort()();
+    }
+    dout(5) << __func__ << " in " << dur << dendl;;
+    return r;
 }
 
 int KernelDevice::_aio_start()
 {
-  if (aio) {
-    dout(10) << __func__ << dendl;
-    int r = aio_queue.init();
-    if (r < 0) {
-      if (r == -EAGAIN) {
-	derr << __func__ << " io_setup(2) failed with EAGAIN; "
-	     << "try increasing /proc/sys/fs/aio-max-nr" << dendl;
-      } else {
-	derr << __func__ << " io_setup(2) failed: " << cpp_strerror(r) << dendl;
-      }
-      return r;
+    if (aio) {
+        dout(10) << __func__ << dendl;
+        int r = aio_queue.init();
+        if (r < 0) {
+            if (r == -EAGAIN) {
+                derr << __func__ << " io_setup(2) failed with EAGAIN; "
+                    << "try increasing /proc/sys/fs/aio-max-nr" << dendl;
+            } else {
+                derr << __func__ << " io_setup(2) failed: " << cpp_strerror(r) << dendl;
+            }
+            return r;
+        }
+        aio_thread.create("bstore_aio");
     }
-    aio_thread.create("bstore_aio");
-  }
-  return 0;
+    return 0;
 }
 
 void KernelDevice::_aio_stop()
 {
-  if (aio) {
-    dout(10) << __func__ << dendl;
-    aio_stop = true;
-    aio_thread.join();
-    aio_stop = false;
-    aio_queue.shutdown();
-  }
+    if (aio) {
+        dout(10) << __func__ << dendl;
+        aio_stop = true;
+        aio_thread.join();
+        aio_stop = false;
+        aio_queue.shutdown();
+    }
 }
 
 static bool is_expected_ioerr(const int r)
 {
-  // https://lxr.missinglinkelectronics.com/linux+v4.15/block/blk-core.c#L135
-  return (r == -EOPNOTSUPP || r == -ETIMEDOUT || r == -ENOSPC ||
-	  r == -ENOLINK || r == -EREMOTEIO || r == -EBADE ||
-	  r == -ENODATA || r == -EILSEQ || r == -ENOMEM ||
-	  r == -EAGAIN || r == -EREMCHG || r == -EIO);
+    return (r == -EOPNOTSUPP || r == -ETIMEDOUT || r == -ENOSPC ||
+        r == -ENOLINK || r == -EREMOTEIO || r == -EBADE ||
+        r == -ENODATA || r == -EILSEQ || r == -ENOMEM ||
+        r == -EAGAIN || r == -EREMCHG || r == -EIO);
 }
 
 void KernelDevice::_aio_thread()
@@ -327,15 +321,6 @@ void KernelDevice::aio_submit(IOContext *ioc)
     ioc->num_pending -= pending;
     assert(ioc->num_pending.load() == 0);  // we should be only thread doing this
     assert(ioc->pending_aios.size() == 0);
-    
-    if (cct->_conf->bdev_debug_aio) {
-        list<aio_t>::iterator p = ioc->running_aios.begin();
-        while (p != e) {
-        dout(30) << __func__ << " " << *p << dendl;
-        std::lock_guard<std::mutex> l(debug_queue_lock);
-        debug_aio_link(*p++);
-        }
-    }
 
     void *priv = static_cast<void*>(ioc);
     int r, retries = 0;
@@ -355,13 +340,7 @@ int KernelDevice::_sync_write(uint64_t off, bufferlist &bl, bool buffered)
     uint64_t len = bl.length();
     dout(5) << __func__ << " 0x" << std::hex << off << "~" << len
         << std::dec << " buffered" << dendl;
-    if (cct->_conf->bdev_inject_crash &&
-        rand() % cct->_conf->bdev_inject_crash == 0) {
-        derr << __func__ << " bdev_inject_crash: dropping io 0x" << std::hex
-        << off << "~" << len << std::dec << dendl;
-        ++injecting_crash;
-        return 0;
-    }
+
     vector<iovec> iov;
     bl.prepare_iov(&iov);
     int r = ::pwritev(buffered ? fd_buffered : fd_direct,
@@ -491,9 +470,15 @@ int KernelDevice::read(uint64_t off, uint64_t len, bufferlist *pbl,
     assert(off < size);
     assert(off + len <= size);
 
-    bufferptr p = buffer::create_page_aligned(len);
-    int r = ::pread(buffered ? fd_buffered : fd_direct,
-            p.c_str(), len, off);
+    int r;
+    char* p = (char*)aligned_malloc(len, block_size);
+    if (!p) {
+       r = -errno;
+       derr << __func__ << " aligned_malloc failed!" << dendl;
+       goto out;
+    }
+    r = ::pread(buffered ? fd_buffered : fd_direct,
+            p, len, off);
     if (r < 0) {
         if (ioc->allow_eio && is_expected_ioerr(r)) {
             r = -EIO;
@@ -503,9 +488,10 @@ int KernelDevice::read(uint64_t off, uint64_t len, bufferlist *pbl,
         goto out;
     }
     assert((uint64_t)r == len);
-    pbl->push_back(std::move(p));
+    pbl->append(p, len);
 
 out:
+    aligned_free(p);
     return r < 0 ? r : 0;
 }
 
@@ -541,12 +527,17 @@ int KernelDevice::aio_read(
 
 int KernelDevice::direct_read_unaligned(uint64_t off, uint64_t len, char *buf)
 {
+    int r = 0;
     uint64_t aligned_off = align_down(off, block_size);
     uint64_t aligned_len = align_up(off+len, block_size) - aligned_off;
-    bufferptr p = buffer::create_page_aligned(aligned_len);
-    int r = 0;
+    char* p = (char*)aligned_malloc(aligned_len, block_size);
+    if (!p) {
+       r = -errno;
+       derr << __func__ << " aligned_malloc failed!" << dendl;
+       goto out;
+    }
 
-    r = ::pread(fd_direct, p.c_str(), aligned_len, aligned_off);
+    r = ::pread(fd_direct, p, aligned_len, aligned_off);
     if (r < 0) {
         r = -errno;
         derr << __func__ << " 0x" << std::hex << off << "~" << len << std::dec 
@@ -554,9 +545,10 @@ int KernelDevice::direct_read_unaligned(uint64_t off, uint64_t len, char *buf)
         goto out;
     }
     assert((uint64_t)r == aligned_len);
-    memcpy(buf, p.c_str() + (off - aligned_off), len);
+    memcpy(buf, p + (off - aligned_off), len);
 
 out:
+    aligned_free(p);
     return r < 0 ? r : 0;
 }
 

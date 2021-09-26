@@ -1,3 +1,6 @@
+#ifndef DEBUG_H
+#define DEBUG_H
+
 #include <iostream>
 
 #define INFOLEVEL 1
@@ -8,3 +11,5 @@
 #define dout(level) (level - DEBUGLEVEL >=0 ) && std::cout 
 #define dendl std::endl
 #define derr std::cerr
+
+#endif //DEBUG_H

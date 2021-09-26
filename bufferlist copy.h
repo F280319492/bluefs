@@ -6,6 +6,45 @@
 #include <iostream>
 #include <stdlib.h>
 
+using bufferlist_v = std::vector<uint8_t>;
+
+inline void uint64insert(bufferlist_v &bl, uint64_t x) {
+
+    uint8_t *uint8_ptr = (uint8_t*)&x;
+
+    for (int i = 0; i < 8; i++) {
+        bl.emplace_back(*(uint8_ptr + i));
+    }
+}
+
+inline void uint64insert(std::list<unsigned char> &bl, uint64_t x) {
+
+    uint8_t *uint8_ptr = (uint8_t*)&x;
+
+    for (int i = 0; i < 8; i++) {
+        bl.emplace_back(*(uint8_ptr + i));
+    }
+}
+
+inline void append(bufferlist_v &bl, const char *buf, size_t len) {
+    bl.insert(bl.end(), buf, buf + len);
+}
+
+inline void copy(const bufferlist_v &bl, bufferlist_v::const_iterator &p, size_t len, char *buf) {
+
+    long length = len;
+
+    while (length > 0) {
+        if (bl.end() == p) {
+            throw std::range_error("error bufferlist_v len to copy");
+        }
+
+        *buf = *(p++);
+        length--;
+    }
+
+}
+
 void* aligned_malloc(size_t required_bytes, size_t alignment) {
     uint32_t offset = alignment - 1 + sizeof(void*);
     void* p1 = (void*)malloc(required_bytes + offset);
@@ -25,57 +64,55 @@ void aligned_free(void *p2){
     }
 }
 
-template <typename T>
-inline constexpr T align_up(T v, T align) {
-  return (v + align - 1) & ~(align - 1);
-}
-
-template <typename T>
-inline constexpr T align_down(T v, T align) {
-  return v & ~(align - 1);
-}
-
-
-struct buffernode {
-    void       *buf;
-    uint32_t    len;
-    bool        is_align;
-    buffernode(const void* p, int l, bool align) : buf(p), len(l), is_align(align) {}
-    buffernode(const void* p, int l) : buf(p), len(l), is_align(false) {}
-};
-
-
-using bufferlist_v = std::vector<buffernode>;
-
 class bufferlist {
 public:
-    bufferlist() : capacity(0) {}
-    ~bufferlist() {
-        clear();
+    void iter_start() {
+        dec_pos = bl.begin();
     }
 
     void clear() {
-        while (!bl.empty()) {
-            buffernode& node = bl.back();
-            if (node.is_align) {
-                aligned_free(node.buf);
-            } else {
-                free(node.buf);
-            }
-
-            bl.pop_back();
-        }
+        bl.clear();
+        dec_pos = bl.end();
     }
 
     void append(const char *buf, size_t len) {
-        bl.push_back(buffernode(buf, len));
+        bl.insert(bl.end(), buf, buf + len);
     }
 
-    void append(const char *buf, size_t len, ) {
-        bl.push_back(buffernode(buf, len));
+    template<typename T>
+    void append_var(T v)
+    {
+        char *ptr = (char*)&v;
+        bl.insert(bl.end(), ptr, ptr + sizeof(v));
     }
 
-    
+    template<typename T>
+    void append_struct(const T &v) {
+        v.encode(*this);
+    }
+
+    template<typename T>
+    void append_vector(const std::vector<T> &v, bool varint = false) {
+        uint32_t num = v.size();
+        append_var(num);
+        if (varint) {
+            for (auto p : v) {
+                append_var(p);
+            }
+        }
+        else {
+            for (auto p : v) {
+                p.encode(*this);
+            }
+        }
+    }
+
+    void append_string(const std::string_view &s) {
+        uint32_t num = s.size();
+        append_var(num);
+        bl.insert(bl.end(), s.begin(), s.end());
+    }
+
     void append_bufferlist(const bufferlist &src_bl) {
         uint32_t num = src_bl.size();
         append_var(num);
@@ -175,22 +212,32 @@ public:
         return dec_pos;
     }
 
-    std::size_t size() const {
+    std::size_t size() const{
         return bl.size();
     }
 
-    std::size_t capacity() const {
-        return capacity;
+    void push_back(char c) {
+        bl.push_back(c);
     }
 
-    void push_back(char* buf, uint32_t len) {
-        bl.push_back({buf, len});
-        capacity += len;
+    bufferlist_v const_buf() const{
+        return bl;
     }
+
 
 private:
     bufferlist_v bl;
-    uint32_t capacity;
+    bufferlist_v::const_iterator dec_pos;
 };
+
+template <typename T>
+inline constexpr T align_up(T v, T align) {
+  return (v + align - 1) & ~(align - 1);
+}
+
+template <typename T>
+inline constexpr T align_down(T v, T align) {
+  return v & ~(align - 1);
+}
 
 #endif //BUFFERLIST_H
