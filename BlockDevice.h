@@ -8,6 +8,7 @@
 #include <list>
 #include <map>
 #include "bufferlist.h"
+#include "BlueFSContext.h"
 
 #define SPDK_PREFIX "spdk:"
 
@@ -16,9 +17,11 @@ struct IOContext {
 };
 
 class BlockDevice {
+public:
+    BlueFSContext* cct;
 
 public:
-    BlockDevice() {}
+    BlockDevice(BlueFSContext* cct) : cct(cct) {}
     virtual ~BlockDevice() = default;
     typedef void (*aio_callback_t)(void *handle, void *aio);
 
@@ -61,4 +64,4 @@ public:
     virtual void close() = 0;
 };
 
-#endif //CEPH_OS_BLUESTORE_BLOCKDEVICE_H
+#endif //BLOCKDEVICE_H

@@ -1,215 +1,179 @@
-#pragma once
-
+#ifndef BUFFERLIST_H
+#define BUFFERLIST_H
 
 #include <list>
 #include <vector>
 #include <iostream>
+#include <stdlib.h>
 
-using Buffer = std::vector<uint8_t>;
-using bufferlist_v = std::vector<uint8_t>;
+#define IOV_MAX		1024
 
-inline void uint64insert(bufferlist_v &bl, uint64_t x) {
+struct iovec {
+	void *   iov_base;      /* [XSI] Base address of I/O memory region */
+	size_t   iov_len;       /* [XSI] Size of region iov_base points to */
+};
 
-    uint8_t *uint8_ptr = (uint8_t*)&x;
+void* aligned_malloc(size_t required_bytes, size_t alignment) {
+    uint32_t offset = alignment - 1 + sizeof(void*);
+    void* p1 = (void*)malloc(required_bytes + offset);
+    if (p1 == NULL)
+        return NULL;
 
-    for (int i = 0; i < 8; i++) {
-        bl.emplace_back(*(uint8_ptr + i));
+    void** p2 = (void**)(((size_t)p1 + offset ) & ~(alignment - 1));
+    p2[-1] = p1;
+
+    return p2;
+}
+
+void aligned_free(void *p2){
+    if (p2) {
+        void* p1 = ((void**)p2)[-1];
+        free(p1);
     }
 }
 
-inline void uint64insert(std::list<unsigned char> &bl, uint64_t x) {
-
-    uint8_t *uint8_ptr = (uint8_t*)&x;
-
-    for (int i = 0; i < 8; i++) {
-        bl.emplace_back(*(uint8_ptr + i));
-    }
+template <typename T>
+inline constexpr T align_up(T v, T align) {
+  return (v + align - 1) & ~(align - 1);
 }
 
-inline void append(bufferlist_v &bl, const char *buf, size_t len) {
-    bl.insert(bl.end(), buf, buf + len);
+template <typename T>
+inline constexpr T align_down(T v, T align) {
+  return v & ~(align - 1);
 }
 
-inline void copy(const bufferlist_v &bl, bufferlist_v::const_iterator &p, size_t len, char *buf) {
 
-    long length = len;
+struct buffernode {
+    void       *buf;
+    uint32_t    len;
+    bool        is_align;
+    buffernode(const void* p, int l, bool align) : buf(p), len(l), is_align(align) {}
+    buffernode(const void* p, int l) : buf(p), len(l), is_align(false) {}
+};
 
-    while (length > 0) {
-        if (bl.end() == p) {
-            throw std::range_error("error bufferlist_v len to copy");
-        }
 
-        *buf = *(p++);
-        length--;
-    }
-
-}
+using bufferlist_v = std::vector<buffernode>;
 
 class bufferlist {
-
 public:
+    bufferlist() : capacity(0) {}
+    ~bufferlist() {
+        clear_free();
+    }
 
-    uint32_t crc32() const;
+    void clear_free() {
+        while (!bl.empty()) {
+            buffernode& node = bl.back();
+            if (node.is_align) {
+                aligned_free(node.buf);
+            } else {
+                free(node.buf);
+            }
 
-    void iter_start() {
-        dec_pos = bl.begin();
+            bl.pop_back();
+        }
+        capacity = 0;
     }
 
     void clear() {
         bl.clear();
-        dec_pos = bl.end();
+        capacity = 0;
     }
 
     void append(const char *buf, size_t len) {
-        bl.insert(bl.end(), buf, buf + len);
+        bl.push_back(buffernode(buf, len));
+        capacity += len;
     }
 
-    template<typename T>
-    void append_var(T v) {
-        char *ptr = (char*)&v;
-        bl.insert(bl.end(), ptr, ptr + sizeof(v));
+    void append(const char *buf, size_t len, bool is_align) {
+        bl.push_back(buffernode(buf, len, is_align));
+        capacity += len;
     }
-
-    template<typename T>
-    void append_struct(const T &v) {
-        v.encode(*this);
-    }
-
-    template<typename T>
-    void append_vector(const std::vector<T> &v, bool varint = false) {
-        uint32_t num = v.size();
-        append_var(num);
-        if (varint) {
-            for (auto p : v) {
-                append_var(p);
-            }
-        }
-        else {
-            for (auto p : v) {
-                p.encode(*this);
-            }
-        }
-    }
-
-    void append_string(const std::string_view &s) {
-        uint32_t num = s.size();
-        append_var(num);
-        bl.insert(bl.end(), s.begin(), s.end());
-    }
-
-    void append_bufferlist(const bufferlist &src_bl) {
-        uint32_t num = src_bl.size();
-        append_var(num);
-        
-        //bl.insert(bl.end(), src_bl.const_buf().begin(), src_bl.const_buf().end()); 出现浅拷贝问题
-        for (auto p : src_bl.const_buf()) {
+    
+    void append(const bufferlist &src_bl) {
+        for (auto& p : src_bl.get_buffer()) {
             bl.push_back(p);
+            capacity += p.len;
+        }
+        src_bl.clear();
+    }
+
+    void copy(char *buf, size_t len) {
+        if (len > capacity) {
+            throw std::range_error("error bufferlist len to copy");
+        } else {
+            size_t off = 0;
+            size_t idx = 0;
+            while (len > 0) {
+                buffernode& node = bl[idx];
+                memcpy(buf+off, node.buf, max(len, node.len));
+                len -= max(len, node.len);
+                off += max(len, node.len);
+                idx++;
+            }
         }
     }
 
-    bufferlist_v::const_iterator copy(size_t len, char *buf) {
-        long length = len;
-        while (length > 0) {
-            if (dec_pos == bl.end()) {
-                throw std::range_error("error bufferlist_v len to copy");
+    void copy(char *buf, size_t len, size_t offset) {
+        if (offset + len > capacity) {
+            throw std::range_error("error bufferlist len to copy");
+        } else {
+            size_t length = len;
+            size_t off = 0;
+            size_t idx = 0;
+            while (offset >= bl[idx].len) {
+                offset -= bl[idx].len;
+                idx++;
             }
-
-            *buf = *(dec_pos++);
-            length--;
+            while (length > 0) {
+                buffernode& node = bl[idx];
+                memcpy(buf+off, node.buf+offset, max(length, node.len-offset));
+                length -= max(length, node.len);
+                off += max(length, node.len);
+                idx++;
+                offset = 0;
+            }
         }
-
-        return dec_pos;
     }
 
-    template<typename T>
-    bufferlist_v::const_iterator copy_to_var(T &v) {
-        char *ptr = (char*)&v;
-        long length = sizeof(v);
-        while (length > 0) {
-            if (dec_pos == bl.end()) {
-                throw std::range_error("error bufferlist_v len to copy");
-            }
-
-            *(ptr++) = *(dec_pos++);
-            length--;
-        }
-
-        return dec_pos;
-    }
-
-    template<typename T>
-    bufferlist_v::const_iterator copy_to_vector(std::vector<T> &v, bool varint = false) {
-        uint32_t num = 0;
-        copy_to_var(num);
-        if (varint) {
-            for (int i = 0; i < num; i++) {
-                T t;
-                copy_to_var(t);
-                v.push_back(t);
-            }
-        }
-        else {
-            for (int i = 0; i < num; i++) {
-                T t;
-                t.decode(*this);
-                v.push_back(t);
-            }
-        }
-
-        return dec_pos;
-    }
-
-    bufferlist_v::const_iterator copy_to_string(std::vector<char> &dst, char *s = nullptr) {
-        uint32_t num = 0;
-        copy_to_var(num);
-        for (int i = 0; i < num; i++) {
-            char c;
-            copy_to_var(c);
-            dst.push_back(c);
-        }
-
-        if (s != nullptr) {
-            char *ptr = s;
-            for (auto c : dst) {
-                *(ptr++) = c;
-            }
-        }
-
-        return dec_pos;
-    }
-    bufferlist_v::const_iterator copy_to_bufferlist(bufferlist &dst, char *s = nullptr) {
-        uint32_t num = 0;
-        copy_to_var(num);
-        for (int i = 0; i < num; i++) {
-            char c;
-            copy_to_var(c);
-            dst.push_back(c);
-        }
-
-        if (s != nullptr) {
-            char *ptr = s;
-            for (auto c : dst.const_buf()) {
-                *(ptr++) = c;
-            }
-        }
-
-        return dec_pos;
-    }
-
-    std::size_t size() const{
+    std::size_t size() const {
         return bl.size();
     }
 
-    void push_back(char c) {
-        bl.push_back(c);
+    std::size_t length() const {
+        return capacity;
     }
 
-    bufferlist_v const_buf() const{
+    template<typename VectorT>
+    void prepare_iov(VectorT *piov) const {
+        assert(bl.size() <= IOV_MAX);
+        piov->resize(bl.size());
+        unsigned n = 0;
+        for (auto& p : bl) {
+            (*piov)[n].iov_base = p.buf;
+            (*piov)[n].iov_len = p.len;
+            ++n;
+        }
+    }
+
+    const bufferlist_v& get_buffer() {
         return bl;
     }
 
+    void rebuild_aligned_size_and_memory(unsigned align_size) {
+        buffernode node;
+        node.len = capacity;
+        node.is_align;
+        uint32_t align_len = align_up(capacity);
+        node.buf = aligned_malloc(align_len, align_size);
+        copy(node.buf, capacity);
+        clear_free();
+        bl.push_back(node);
+    }
 
 private:
     bufferlist_v bl;
-    bufferlist_v::const_iterator dec_pos;
+    uint32_t capacity;
 };
+
+#endif //BUFFERLIST_H

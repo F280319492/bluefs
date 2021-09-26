@@ -5,6 +5,8 @@
 
 #include "aio.h"
 #include "BlockDevice.h"
+#include "BlueFSContext.h"
+#include <thread>
 
 #ifndef RW_IO_MAX
 #define RW_IO_MAX 0x7FFFF000
@@ -18,8 +20,6 @@ class KernelDevice : public BlockDevice {
     std::string path;
     bool aio, dio;
 
-    std::mutex debug_lock;
-
     std::atomic<bool> io_since_flush = {false};
     std::mutex flush_mutex;
 
@@ -27,6 +27,7 @@ class KernelDevice : public BlockDevice {
     aio_callback_t aio_callback;
     void *aio_callback_priv;
     bool aio_stop;
+    std::thread aio_thread;
 
     void _aio_thread();
     int _aio_start();
@@ -38,8 +39,8 @@ class KernelDevice : public BlockDevice {
 
     int direct_read_unaligned(uint64_t off, uint64_t len, char *buf);
 
-    public:
-    KernelDevice(CephContext* cct, aio_callback_t cb, void *cbpriv);
+public:
+    KernelDevice(BlueFSContext* cct, aio_callback_t cb, void *cbpriv);
 
     void aio_submit(IOContext *ioc) override;
 
@@ -68,4 +69,4 @@ class KernelDevice : public BlockDevice {
     void close() override;
 };
 
-#endif
+#endif //KERNELDEVICE_H

@@ -1,6 +1,5 @@
-#pragma once
-
-#include "acconfig.h"
+#ifndef AIO_H
+#define AIO_H
 
 #define HAVE_LIBAIO
 #ifdef HAVE_LIBAIO
@@ -33,9 +32,14 @@ struct aio_t {
     void pread(uint64_t _offset, uint64_t len) {
         offset = _offset;
         length = len;
-        bufferptr p = buffer::create_page_aligned(length);
-        io_prep_pread(&iocb, fd, p.c_str(), length, offset);
-        bl.append(std::move(p));
+        char* p = (char*)aligned_malloc(len, block_size);
+        if (!p) {
+            r = -errno;
+            derr << __func__ << " aligned_malloc failed!" << dendl;
+            return;
+        }
+        io_prep_pread(&iocb, fd, p, length, offset);
+        bl.append(p, len, true);
     }
 
     long get_return_value() {
@@ -70,18 +74,18 @@ struct aio_queue_t {
         assert(ctx == 0);
         int r = io_setup(max_iodepth, &ctx);
         if (r < 0) {
-        if (ctx) {
-        io_destroy(ctx);
-        ctx = 0;
-        }
+            if (ctx) {
+                io_destroy(ctx);
+                ctx = 0;
+            }
         }
         return r;
     }
     void shutdown() {
         if (ctx) {
-        int r = io_destroy(ctx);
-        assert(r == 0);
-        ctx = 0;
+            int r = io_destroy(ctx);
+            assert(r == 0);
+            ctx = 0;
         }
     }
 
@@ -92,3 +96,5 @@ struct aio_queue_t {
 };
 
 #endif
+
+#endif //AIO_H
