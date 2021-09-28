@@ -3,10 +3,11 @@
 
 #include <atomic>
 
-#include "aio.h"
+#include "common/aio.h"
 #include "BlockDevice.h"
-#include "BlueFSContext.h"
+#include "common/BlueFSContext.h"
 #include <thread>
+#include <pthread.h>
 
 #ifndef RW_IO_MAX
 #define RW_IO_MAX 0x7FFFF000
@@ -47,6 +48,7 @@ public:
     uint64_t get_size() const override {
         return size;
     }
+
     uint64_t get_block_size() const override {
         return block_size;
     }

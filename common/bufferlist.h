@@ -5,32 +5,15 @@
 #include <vector>
 #include <iostream>
 #include <stdlib.h>
+#include <algorithm>
+#include <assert.h>
+#include "debug.h"
 
 #define IOV_MAX		1024
 
-struct iovec {
-	void *   iov_base;      /* [XSI] Base address of I/O memory region */
-	size_t   iov_len;       /* [XSI] Size of region iov_base points to */
-};
+void* aligned_malloc(size_t required_bytes, size_t alignment);
 
-void* aligned_malloc(size_t required_bytes, size_t alignment) {
-    uint32_t offset = alignment - 1 + sizeof(void*);
-    void* p1 = (void*)malloc(required_bytes + offset);
-    if (p1 == NULL)
-        return NULL;
-
-    void** p2 = (void**)(((size_t)p1 + offset ) & ~(alignment - 1));
-    p2[-1] = p1;
-
-    return p2;
-}
-
-void aligned_free(void *p2){
-    if (p2) {
-        void* p1 = ((void**)p2)[-1];
-        free(p1);
-    }
-}
+void aligned_free(void *p2);
 
 template <typename T>
 inline constexpr T align_up(T v, T align) {
@@ -47,8 +30,15 @@ struct buffernode {
     void       *buf;
     uint32_t    len;
     bool        is_align;
-    buffernode(const void* p, int l, bool align) : buf(p), len(l), is_align(align) {}
-    buffernode(const void* p, int l) : buf(p), len(l), is_align(false) {}
+    bool        need_free;
+    buffernode(void* p, int l, bool align) : buf(p), len(l), is_align(align), need_free(false) {}
+    buffernode(void* p, int l) : buf(p), len(l), is_align(false), need_free(false) {}
+    buffernode() : buf(nullptr), len(0), is_align(false), need_free(false) {}
+    buffernode(const buffernode& node) : buf(node.buf), len(node.len), is_align(node.is_align), need_free(node.need_free) {}
+    buffernode(void* p, int l, bool align, bool need_free) : buf(p), len(l), is_align(align), need_free(need_free) {}
+    buffernode operator=(const buffernode& node) {
+        return buffernode(node);
+    }
 };
 
 
@@ -61,15 +51,18 @@ public:
         clear_free();
     }
 
+    uint32_t crc32() const;
+
     void clear_free() {
         while (!bl.empty()) {
             buffernode& node = bl.back();
-            if (node.is_align) {
-                aligned_free(node.buf);
-            } else {
-                free(node.buf);
+            if (node.need_free) {
+                if (node.is_align) {
+                    aligned_free(node.buf);
+                } else {
+                    free(node.buf);
+                }
             }
-
             bl.pop_back();
         }
         capacity = 0;
@@ -80,17 +73,22 @@ public:
         capacity = 0;
     }
 
-    void append(const char *buf, size_t len) {
+    void append(char *buf, size_t len) {
         bl.push_back(buffernode(buf, len));
         capacity += len;
     }
 
-    void append(const char *buf, size_t len, bool is_align) {
+    void append(char *buf, size_t len, bool is_align) {
         bl.push_back(buffernode(buf, len, is_align));
         capacity += len;
     }
+
+    void append(char *buf, size_t len, bool is_align, bool need_free) {
+        bl.push_back(buffernode(buf, len, is_align, need_free));
+        capacity += len;
+    }
     
-    void append(const bufferlist &src_bl) {
+    void append(bufferlist &src_bl) {
         for (auto& p : src_bl.get_buffer()) {
             bl.push_back(p);
             capacity += p.len;
@@ -106,9 +104,10 @@ public:
             size_t idx = 0;
             while (len > 0) {
                 buffernode& node = bl[idx];
-                memcpy(buf+off, node.buf, max(len, node.len));
-                len -= max(len, node.len);
-                off += max(len, node.len);
+                size_t copy_len = std::min(len, (size_t)node.len);
+                memcpy(buf+off, (uint8_t *)node.buf, copy_len);
+                len -= copy_len;
+                off += copy_len;
                 idx++;
             }
         }
@@ -127,13 +126,22 @@ public:
             }
             while (length > 0) {
                 buffernode& node = bl[idx];
-                memcpy(buf+off, node.buf+offset, max(length, node.len-offset));
-                length -= max(length, node.len);
-                off += max(length, node.len);
+                size_t copy_len = std::min(length, (size_t)(node.len-offset));
+                memcpy(buf+off, (uint8_t *)node.buf+offset, copy_len);
+                length -= copy_len;
+                off += copy_len;
                 idx++;
                 offset = 0;
             }
         }
+    }
+
+    void copy(void *buf, size_t len) {
+        copy((char*)buf, len);
+    }
+
+    void copy(void *buf, size_t len, size_t offset) {
+        copy((char*)buf, len, offset);
     }
 
     std::size_t size() const {
@@ -160,15 +168,23 @@ public:
         return bl;
     }
 
-    void rebuild_aligned_size_and_memory(unsigned align_size) {
-        buffernode node;
-        node.len = capacity;
-        node.is_align;
-        uint32_t align_len = align_up(capacity);
-        node.buf = aligned_malloc(align_len, align_size);
-        copy(node.buf, capacity);
-        clear_free();
-        bl.push_back(node);
+    bool rebuild_aligned_size_and_memory(unsigned align_size) {
+        if (bl.size() > 1 || (bl.size() == 1 && (bl[0].len%align_size || (uint64_t)bl[0].buf%align_size))) {
+            buffernode node;
+            node.len = capacity;
+            node.is_align = true;
+            uint32_t align_len = align_up(capacity, align_size);
+            node.buf = aligned_malloc(align_len, align_size);
+            if (!node.buf) {
+                derr << __func__ << " aligned_malloc failed!" << dendl;
+                return false;
+            }
+            copy(node.buf, capacity);
+            clear_free();
+            bl.push_back(node);
+            capacity += node.len;
+            return true;
+        }
     }
 
 private:

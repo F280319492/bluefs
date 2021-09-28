@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "KernelDevice.h"
-#include "debug.h"
+#include "common/utime.h"
 
 KernelDevice::KernelDevice(BlueFSContext* cct, aio_callback_t cb, void *cbpriv)
   : BlockDevice(cct),
@@ -31,8 +31,7 @@ KernelDevice::KernelDevice(BlueFSContext* cct, aio_callback_t cb, void *cbpriv)
     aio_queue(cct->_conf->bdev_aio_max_queue_depth),
     aio_callback(cb),
     aio_callback_priv(cbpriv),
-    aio_stop(false),
-    aio_thread(this)
+    aio_stop(false)
 {
 }
 
@@ -48,7 +47,7 @@ int KernelDevice::_lock()
     return 0;
     }
 
-int KernelDevice::open(const string& p)
+int KernelDevice::open(const std::string& p)
 {
     path = p;
     int r = 0;
@@ -187,7 +186,7 @@ int KernelDevice::flush()
     if (r < 0) {
         r = -errno;
         derr << __func__ << " fdatasync got: " << cpp_strerror(r) << dendl;
-        abort()();
+        abort();
     }
     dout(5) << __func__ << " in " << dur << dendl;;
     return r;
@@ -207,8 +206,8 @@ int KernelDevice::_aio_start()
             }
             return r;
         }
-        aio_thread = std::thread{ &KernelDevice::_aio_thread};
-        pthread_setname_np(read_thread.native_handle(), "bluefs_aio");
+        aio_thread = std::thread{ &KernelDevice::_aio_thread, this};
+        pthread_setname_np(aio_thread.native_handle(), "bluefs_aio");
     }
     return 0;
 }
@@ -259,27 +258,27 @@ void KernelDevice::_aio_thread()
                 io_since_flush.store(true);
 
                 long r = aio[i]->get_return_value();
-                    if (r < 0) {
-                        derr << __func__ << " got r=" << r << " (" << cpp_strerror(r) << ")"
-                        << dendl;
-                        if (ioc->allow_eio && is_expected_ioerr(r)) {
-                            derr << __func__ << " translating the error to EIO for upper layer"
-                                 << dendl;
-                            ioc->set_return_value(-EIO);
-                        } else {
-                            assert(0 == "got unexpected error from aio_t::get_return_value. "
-                            "This may suggest HW issue. Please check your dmesg!");
-                        }
-                    } else if (aio[i]->length != (uint64_t)r) {
-                        derr << "aio to " << aio[i]->offset << "~" << aio[i]->length
-                             << " but returned: " << r << dendl;
-                        assert(0 == "unexpected aio error");
+                if (r < 0) {
+                    derr << __func__ << " got r=" << r << " (" << cpp_strerror(r) << ")"
+                    << dendl;
+                    if (ioc->allow_eio && is_expected_ioerr(r)) {
+                        derr << __func__ << " translating the error to EIO for upper layer"
+                                << dendl;
+                        ioc->set_return_value(-EIO);
+                    } else {
+                        assert(0 == "got unexpected error from aio_t::get_return_value. "
+                        "This may suggest HW issue. Please check your dmesg!");
                     }
+                } else if (aio[i]->length != (uint64_t)r) {
+                    derr << "aio to " << aio[i]->offset << "~" << aio[i]->length
+                            << " but returned: " << r << dendl;
+                    assert(0 == "unexpected aio error");
+                }
 
-                    dout(10) << __func__ << " finished aio " << aio[i] << " r " << r
-                            << " ioc " << ioc
-                            << " with " << (ioc->num_running.load() - 1)
-                            << " aios left" << dendl;
+                dout(10) << __func__ << " finished aio " << aio[i] << " r " << r
+                        << " ioc " << ioc
+                        << " with " << (ioc->num_running.load() - 1)
+                        << " aios left" << dendl;
 
                 // NOTE: once num_running and we either call the callback or
                 // call aio_wake we cannot touch ioc or aio[] as the caller
@@ -311,7 +310,7 @@ void KernelDevice::aio_submit(IOContext *ioc)
     // move these aside, and get our end iterator position now, as the
     // aios might complete as soon as they are submitted and queue more
     // wal aio's.
-    list<aio_t>::iterator e = ioc->running_aios.begin();
+    std::list<aio_t>::iterator e = ioc->running_aios.begin();
     ioc->running_aios.splice(e, ioc->pending_aios);
 
     int pending = ioc->num_pending.load();
@@ -379,7 +378,7 @@ int KernelDevice::write(
     assert(off < size);
     assert(off + len <= size);
 
-    if ((!buffered || bl.get_num_buffers() >= IOV_MAX) &&
+    if ((!buffered || bl.size() >= IOV_MAX) &&
         bl.rebuild_aligned_size_and_memory(block_size)) {
         dout(20) << __func__ << " rebuilding buffer to be aligned" << dendl;
     }
@@ -403,7 +402,7 @@ int KernelDevice::aio_write(
     assert(off < size);
     assert(off + len <= size);
 
-    if ((!buffered || bl.get_num_buffers() >= IOV_MAX) &&
+    if ((!buffered || bl.size() >= IOV_MAX) &&
         bl.rebuild_aligned_size_and_memory(block_size)) {
         dout(20) << __func__ << " rebuilding buffer to be aligned" << dendl;
     }
@@ -484,7 +483,6 @@ int KernelDevice::aio_read(
     int r = 0;
 #ifdef HAVE_LIBAIO
     if (aio && dio) {
-        _aio_log_start(ioc, off, len);
         ioc->pending_aios.push_back(aio_t(ioc, fd_direct));
         ++ioc->num_pending;
         aio_t& aio = ioc->pending_aios.back();
