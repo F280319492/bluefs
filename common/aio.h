@@ -1,7 +1,6 @@
 #ifndef AIO_H
 #define AIO_H
 
-#define HAVE_LIBAIO
 #ifdef HAVE_LIBAIO
 # include <libaio.h>
 
@@ -9,6 +8,7 @@
 #include <boost/container/small_vector.hpp>
 
 #include "bufferlist.h"
+#include <sys/uio.h>
 
 struct aio_t {
     struct iocb iocb;  // must be first element; see shenanigans in aio_queue_t
@@ -32,14 +32,13 @@ struct aio_t {
     void pread(uint64_t _offset, uint64_t len) {
         offset = _offset;
         length = len;
-        char* p = (char*)aligned_malloc(len, block_size);
+        char* p = (char*)aligned_malloc(len, 4096);
         if (!p) {
-            r = -errno;
             derr << __func__ << " aligned_malloc failed!" << dendl;
             return;
         }
         io_prep_pread(&iocb, fd, p, length, offset);
-        bl.append(p, len, true);
+        bl.append(p, len, true, true);
     }
 
     long get_return_value() {
@@ -60,7 +59,7 @@ struct aio_queue_t {
     int max_iodepth;
     io_context_t ctx;
 
-    typedef list<aio_t>::iterator aio_iter;
+    typedef std::list<aio_t>::iterator aio_iter;
 
     explicit aio_queue_t(unsigned max_iodepth)
         : max_iodepth(max_iodepth),

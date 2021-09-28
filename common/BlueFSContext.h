@@ -3,6 +3,9 @@
 
 #include <assert.h>
 #include <atomic>
+#include <iostream>
+
+#define PRId64  "llu"
 
 struct bulefs_config {
     uint32_t bdev_aio_max_queue_depth;
@@ -19,8 +22,15 @@ public:
     BlueFSContext &operator =(const BlueFSContext &) = delete;
     BlueFSContext(BlueFSContext &&) = delete;
     BlueFSContext &operator =(BlueFSContext &&) = delete;
-
-    ~BlueFSContext();
+    BlueFSContext() {
+      _conf = new bulefs_config;
+    }
+    ~BlueFSContext() {
+      if (_conf) {
+        delete _conf;
+        _conf = nullptr;
+      }
+    }
 private:
     std::atomic<unsigned> nref;
 public:
@@ -75,7 +85,7 @@ struct byte_u_t {
   explicit byte_u_t(uint64_t _v) : v(_v) {};
 };
 
-inline ostream& operator<<(ostream& out, const byte_u_t& b)
+inline std::ostream& operator<<(std::ostream& out, const byte_u_t& b)
 {
   uint64_t n = b.v;
   int index = 0;
