@@ -1,8 +1,8 @@
 
 #include "StableAllocator.h"
 
-StableAllocator::StableAllocator(BlueFSContext* cct, const std::string& name)
-    : Allocator(name), cct(cct), num_free(0), last_alloc(0)
+StableAllocator::StableAllocator(BlueFSContext* cct, uint32_t size, const std::string& name)
+    : Allocator(name), cct(cct), stable_size(size), num_free(0), last_alloc(0)
 {
 }
 
@@ -38,6 +38,7 @@ int64_t StableAllocator::allocate(
             offset = *free_list.begin();
         }
         
+        extents->push_back(bluefs_pextent_t(offset, length));
         free_list.erase(offset);
 
         allocated_size += length;

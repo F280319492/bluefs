@@ -13,7 +13,9 @@ struct bulefs_config {
     uint64_t bdev_block_size;
     uint32_t bdev_aio_reap_max;
     uint32_t bdev_aio_poll_ms;
-
+    uint64_t bluefs_max_log_runway;
+    uint64_t bluefs_alloc_size;
+    std::string bluefs_allocator;
 };
 
 class BlueFSContext {
@@ -49,7 +51,7 @@ public:
 };
 
 namespace {
-  inline ostream& format_u(ostream& out, const uint64_t v, const uint64_t n,
+  inline std::ostream& format_u(std::ostream& out, const uint64_t v, const uint64_t n,
       const int index, const uint64_t mult, const char* u)
   {
     char buffer[32];

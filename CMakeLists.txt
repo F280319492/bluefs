@@ -7,4 +7,6 @@ set(libbluefs_srcs
 	Allocator/Allocator.cc
 	Allocator/StableAllocator.cc)
 
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+
 add_library(bluefs STATIC ${libbluefs_srcs})

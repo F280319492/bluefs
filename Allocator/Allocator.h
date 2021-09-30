@@ -5,8 +5,9 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <functional>
 
-#include "common/BlueFSContext"
+#include "common/BlueFSContext.h"
 #include "common/debug.h"
 
 // pextent: physical extent
@@ -39,8 +40,8 @@ typedef std::vector<bluefs_pextent_t> PExtentVector;
 
 class Allocator {
 public:
-  explicit Allocator(const std::string& name);
-  virtual ~Allocator();
+  explicit Allocator(const std::string& name) {}
+  virtual ~Allocator() {}
 
   /*
    * Allocate required number of blocks in n number of extents.
@@ -75,7 +76,9 @@ public:
   {
     return 0.0;
   }
-  virtual double get_fragmentation_score();
+  virtual double get_fragmentation_score() {
+    return 0.0;
+  }
   virtual void shutdown() = 0;
 
   static Allocator *create(BlueFSContext* cct, std::string type, int64_t size,

@@ -18,7 +18,7 @@ private:
     uint64_t                        last_alloc;
 
 public:
-    StableAllocator(BlueFSContext* cct, const std::string& name = "");
+    StableAllocator(BlueFSContext* cct, uint32_t size, const std::string& name = "");
     ~StableAllocator() override;
 
     int64_t allocate(

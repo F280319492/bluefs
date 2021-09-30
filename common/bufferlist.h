@@ -7,9 +7,11 @@
 #include <stdlib.h>
 #include <algorithm>
 #include <assert.h>
+
 #include "debug.h"
 
 #define IOV_MAX		1024
+#define ALLOC_SIZE  4096
 
 void* aligned_malloc(size_t required_bytes, size_t alignment);
 
@@ -29,13 +31,16 @@ inline constexpr T align_down(T v, T align) {
 struct buffernode {
     void       *buf;
     uint32_t    len;
+    uint32_t    cap;
     bool        is_align;
     bool        need_free;
-    buffernode(void* p, int l, bool align) : buf(p), len(l), is_align(align), need_free(false) {}
-    buffernode(void* p, int l) : buf(p), len(l), is_align(false), need_free(false) {}
-    buffernode() : buf(nullptr), len(0), is_align(false), need_free(false) {}
-    buffernode(const buffernode& node) : buf(node.buf), len(node.len), is_align(node.is_align), need_free(node.need_free) {}
-    buffernode(void* p, int l, bool align, bool need_free) : buf(p), len(l), is_align(align), need_free(need_free) {}
+    buffernode(void* p, int l, bool align) : buf(p), len(l), cap(l), is_align(align), need_free(false) {}
+    buffernode(void* p, int l) : buf(p), len(l), cap(l), is_align(false), need_free(false) {}
+    buffernode() : buf(nullptr), len(0), cap(0), is_align(false), need_free(false) {}
+    buffernode(const buffernode& node) : buf(node.buf), len(node.len), cap(node.cap), is_align(node.is_align), need_free(node.need_free) {}
+    buffernode(void* p, int l, bool align, bool need_free) : buf(p), len(l), cap(l), is_align(align), need_free(need_free) {}
+    buffernode(void* p, int l, int cap, bool align) : buf(p), len(l), cap(cap), is_align(align), need_free(false) {}
+    buffernode(void* p, int l, int cap, bool align, bool need_free) : buf(p), len(l), cap(cap), is_align(align), need_free(need_free) {}
     buffernode operator=(const buffernode& node) {
         return buffernode(node);
     }
@@ -46,12 +51,16 @@ using bufferlist_v = std::vector<buffernode>;
 
 class bufferlist {
 public:
-    bufferlist() : capacity(0) {}
+    bufferlist() : capacity(0), idx(0), off(0) {}
+    bufferlist &operator =(const bufferlist &) = delete;
+    bufferlist(bufferlist &&) = delete;
+    bufferlist &operator =(bufferlist &&) = delete;
+
     ~bufferlist() {
         clear_free();
     }
 
-    uint32_t crc32() const;
+    uint32_t crc32c(uint32_t) const;
 
     void clear_free() {
         while (!bl.empty()) {
@@ -87,6 +96,11 @@ public:
         bl.push_back(buffernode(buf, len, is_align, need_free));
         capacity += len;
     }
+
+    void append(char *buf, size_t len, size_t cap, bool is_align, bool need_free) {
+        bl.push_back(buffernode(buf, len, cap, is_align, need_free));
+        capacity += len;
+    }
     
     void append(bufferlist &src_bl) {
         for (auto& p : src_bl.get_buffer()) {
@@ -96,14 +110,23 @@ public:
         src_bl.clear();
     }
 
-    void copy(char *buf, size_t len) {
+    void append_zero(unsigned len) {
+        char* buf = (char*)malloc(len);
+        if (!buf) {
+            derr << __func__ << " malloc failed!" << dendl;
+        }
+        memset(buf, 0, len);
+        append(buf, len, len, false, true);
+    }
+
+    void copy(char *buf, size_t len) const {
         if (len > capacity) {
             throw std::range_error("error bufferlist len to copy");
         } else {
             size_t off = 0;
             size_t idx = 0;
             while (len > 0) {
-                buffernode& node = bl[idx];
+                const buffernode& node = bl[idx];
                 size_t copy_len = std::min(len, (size_t)node.len);
                 memcpy(buf+off, (uint8_t *)node.buf, copy_len);
                 len -= copy_len;
@@ -113,7 +136,7 @@ public:
         }
     }
 
-    void copy(char *buf, size_t len, size_t offset) {
+    void copy(char *buf, size_t len, size_t offset) const {
         if (offset + len > capacity) {
             throw std::range_error("error bufferlist len to copy");
         } else {
@@ -125,7 +148,7 @@ public:
                 idx++;
             }
             while (length > 0) {
-                buffernode& node = bl[idx];
+                const buffernode& node = bl[idx];
                 size_t copy_len = std::min(length, (size_t)(node.len-offset));
                 memcpy(buf+off, (uint8_t *)node.buf+offset, copy_len);
                 length -= copy_len;
@@ -136,11 +159,11 @@ public:
         }
     }
 
-    void copy(void *buf, size_t len) {
+    void copy(void *buf, size_t len) const {
         copy((char*)buf, len);
     }
 
-    void copy(void *buf, size_t len, size_t offset) {
+    void copy(void *buf, size_t len, size_t offset) const {
         copy((char*)buf, len, offset);
     }
 
@@ -186,10 +209,23 @@ public:
             return true;
         }
     }
+    bool encode(const void* buf, size_t len);
+    template <typename T>  
+    bool encode_num(const T v);
+    bool encode_str(const std::string& str);
+    bool encode_bufferlist(const bufferlist& bl);
+
+    bool decode(void* buf, size_t len);
+    template <typename T>  
+    bool decode_num(T* v);
+    bool decode_str(std::string* str);
+    bool decode_bufferlist(bufferlist* bl);
 
 private:
     bufferlist_v bl;
     uint32_t capacity;
+    uint32_t idx;
+    uint32_t off;
 };
 
 #endif //BUFFERLIST_H
