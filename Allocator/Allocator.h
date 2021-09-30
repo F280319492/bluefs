@@ -5,9 +5,11 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <functional>
 
-#include "common/BlueFSContext"
+#include "common/BlueFSContext.h"
 #include "common/debug.h"
+#include "common/interval_set.h"
 
 // pextent: physical extent
 struct bluefs_pextent_t
@@ -39,8 +41,8 @@ typedef std::vector<bluefs_pextent_t> PExtentVector;
 
 class Allocator {
 public:
-  explicit Allocator(const std::string& name);
-  virtual ~Allocator();
+  explicit Allocator(const std::string& name) {}
+  virtual ~Allocator() {}
 
   /*
    * Allocate required number of blocks in n number of extents.
@@ -63,6 +65,7 @@ public:
   /* Bulk release. Implementations may override this method to handle the whole
    * set at once. This could save e.g. unnecessary mutex dance. */
   virtual void release(const PExtentVector& release_set) = 0;
+  virtual void release(const interval_set<uint64_t>& release_set) = 0;
 
   virtual void dump() = 0;
   virtual void dump(std::function<void(uint64_t offset, uint64_t length)> notify) = 0;
@@ -75,7 +78,9 @@ public:
   {
     return 0.0;
   }
-  virtual double get_fragmentation_score();
+  virtual double get_fragmentation_score() {
+    return 0.0;
+  }
   virtual void shutdown() = 0;
 
   static Allocator *create(BlueFSContext* cct, std::string type, int64_t size,

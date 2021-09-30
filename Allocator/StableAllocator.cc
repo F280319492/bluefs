@@ -1,8 +1,9 @@
 
 #include "StableAllocator.h"
+#include "common/bufferlist.h"
 
-StableAllocator::StableAllocator(BlueFSContext* cct, const std::string& name)
-    : Allocator(name), cct(cct), num_free(0), last_alloc(0)
+StableAllocator::StableAllocator(BlueFSContext* cct, uint32_t alloc_size, const std::string& name)
+    : Allocator(name), cct(cct), stable_size(alloc_size), num_free(0), last_alloc(0)
 {
 }
 
@@ -20,10 +21,11 @@ int64_t StableAllocator::allocate(
 
     (void) max_alloc_size;
     uint64_t allocated_size = 0;
-    uint64_t offset = 0;
-    uint32_t length = stable_size;
+    uint64_t offset;
+    uint64_t length;
     std::lock_guard<std::mutex> l(lock);
     while (allocated_size < want_size) {
+
         if (free_list.empty()) { // no space
             break;
         }
@@ -33,15 +35,18 @@ int64_t StableAllocator::allocate(
 
         auto p = free_list.lower_bound(hint);
         if (p == free_list.end()) {
-            offset = *p;
-        } else {
-            offset = *free_list.begin();
+            p = free_list.begin();
         }
-        
-        free_list.erase(offset);
+        offset = p.get_start();
+        length = align_up(want_size-allocated_size, (uint64_t)stable_size);
+        length = std::min(length, p.get_len());
+        extents->push_back(bluefs_pextent_t(offset, length));
+        free_list.erase(offset, length);
 
         allocated_size += length;
         hint = offset + length;
+        // TODO
+        num_free -= length;
     }
     
     if (allocated_size == 0) {
@@ -53,13 +58,25 @@ int64_t StableAllocator::allocate(
 void StableAllocator::release(const PExtentVector& release_set) {
     std::lock_guard<std::mutex> l(lock);
     for (auto& p_extent : release_set) {
-        assert(p_extent.length == stable_size);
-        if (free_list.find(p_extent.offset) == free_list.end()) {
-            free_list.insert(p_extent.offset);
-            num_free += p_extent.length;
-        } else {
-            dout(1) << __func__ << " offset " << p_extent.offset << " has in free list." << dendl;
-        }
+        assert(!(p_extent.offset%stable_size));
+        assert(!(p_extent.length%stable_size));
+        free_list.insert(p_extent.offset, p_extent.length);
+        //TODO
+        num_free += p_extent.length;
+    }
+}
+
+void StableAllocator::release(const interval_set<uint64_t>& release_set) {
+    uint64_t off, len;
+    std::lock_guard<std::mutex> l(lock);
+    for (auto& p_extent : release_set) {
+        off = p_extent.first;
+        len = p_extent.second;
+        assert(!(len % stable_size));
+        assert(!(off % stable_size));
+        free_list.insert(off, len);
+        //TODO
+        num_free += len;
     }
 }
 
@@ -74,42 +91,43 @@ double StableAllocator::get_fragmentation(uint64_t alloc_unit) {
 
 void StableAllocator::dump() {
     std::lock_guard<std::mutex> l(lock);
-    for (auto off : free_list) {
-        dout(0) << __func__ << "  0x" << std::hex << off << "~"
-	      << stable_size << std::dec << dendl;
+    for (auto item : free_list) {
+        dout(0) << __func__ << "  0x" << std::hex << item.first << "~"
+	      << item.second << std::dec << dendl;
     }
 }
 
 void StableAllocator::dump(std::function<void(uint64_t offset, uint64_t length)> notify) {
     std::lock_guard<std::mutex> l(lock);
-    for (auto off : free_list) {
-        notify(off, stable_size);
+    for (auto item : free_list) {
+        notify(item.first, item.second);
     }
 }
 
 void StableAllocator::init_add_free(uint64_t offset, uint64_t length) {
     dout(10) << __func__ << " 0x" << std::hex << offset << "~" << length
 	   << std::dec << dendl;
-    assert(length == stable_size);
-    std::lock_guard<std::mutex> l(lock);
-    if (free_list.find(offset) == free_list.end()) {
-        free_list.insert(offset);
+    uint64_t end_off = offset + length;
+    offset = align_up(offset, (uint64_t)stable_size);
+    length = align_down(end_off-offset, (uint64_t)stable_size);
+    {
+        std::lock_guard<std::mutex> l(lock);
+        free_list.insert(offset, length);
+        //TODO
         num_free += length;
-    } else {
-        dout(1) << __func__ << " offset " << offset << " has in free list." << dendl;
     }
 }
 
 void StableAllocator::init_rm_free(uint64_t offset, uint64_t length) {
     dout(10) << __func__ << " 0x" << std::hex << offset << "~" << length
 	   << std::dec << dendl;
-    assert(length == stable_size);
-    std::lock_guard<std::mutex> l(lock);
-    if (free_list.find(offset) != free_list.end()) {
-        free_list.erase(offset);
+    assert(!(offset % stable_size));
+    assert(!(length % stable_size));
+    {
+        std::lock_guard<std::mutex> l(lock);
+        free_list.erase(offset, length);
+        //TODO
         num_free -= length;
-    } else {
-        dout(1) << __func__ << " offset " << offset << " does not in free list." << dendl;
     }
 }
 
