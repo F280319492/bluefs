@@ -16,6 +16,7 @@ struct bulefs_config {
     uint64_t bluefs_max_log_runway;
     uint64_t bluefs_alloc_size;
     std::string bluefs_allocator;
+    uint64_t bluefs_max_prefetch;
 };
 
 class BlueFSContext {

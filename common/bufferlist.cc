@@ -34,7 +34,7 @@ bool bufferlist::encode(const void* buf, size_t len) {
     }
     buffernode& node = bl.back();
 
-    memcpy(node.buf+node.len, buf, len);
+    memcpy((char*)node.buf+node.len, buf, len);
     node.len += len;
 
     capacity += len;
@@ -61,7 +61,7 @@ bool bufferlist::decode(void* buf, size_t len) {
     size_t copy_len = len;
     size_t copy_off = 0;
     while (len > 0) {
-        memcpy(buf+off, bl[idx].buf+off, std::min(len, (size_t)bl[idx].len-off));
+        memcpy((char*)buf+off, (char*)bl[idx].buf+off, std::min(len, (size_t)bl[idx].len-off));
 
         copy_off += std::min(len, (size_t)bl[idx].len-off);
         off += std::min(len, (size_t)bl[idx].len-off);
@@ -77,7 +77,7 @@ bool bufferlist::decode(void* buf, size_t len) {
 
 template <typename T>
 bool bufferlist::decode_num(T* v) {
-    return decode(buf, sizeof(*v));
+    return decode(v, sizeof(*v));
 }
 
 
@@ -91,7 +91,7 @@ bool bufferlist::decode_bufferlist(bufferlist* bl) {
     decode_num(&len);
 
     size_t alloc_size = align_up(len, (uint32_t)ALLOC_SIZE);
-    void* buf = aligned_malloc(alloc_size, ALLOC_SIZE);
+    buf = aligned_malloc(alloc_size, ALLOC_SIZE);
     decode(buf, len);
 
     bl->append((char*)buf, (size_t)len, alloc_size, true, true);

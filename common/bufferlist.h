@@ -27,6 +27,9 @@ inline constexpr T align_down(T v, T align) {
   return v & ~(align - 1);
 }
 
+#ifndef ROUND_UP_TO
+#define ROUND_UP_TO(n, d) ((n)%(d) ? ((n)+(d)-(n)%(d)) : (n))
+#endif
 
 struct buffernode {
     void       *buf;
@@ -52,9 +55,18 @@ using bufferlist_v = std::vector<buffernode>;
 class bufferlist {
 public:
     bufferlist() : capacity(0), idx(0), off(0) {}
-    bufferlist &operator =(const bufferlist &) = delete;
-    bufferlist(bufferlist &&) = delete;
-    bufferlist &operator =(bufferlist &&) = delete;
+    bufferlist &operator =(const bufferlist & other) {
+        clear_free();
+        this->encode_bufferlist(other);
+    }
+    bufferlist(bufferlist &&other) {
+        clear_free();
+        this->encode_bufferlist(other);
+    }
+    bufferlist &operator =(bufferlist &&other) {
+        clear_free();
+        this->encode_bufferlist(other);
+    }
 
     ~bufferlist() {
         clear_free();

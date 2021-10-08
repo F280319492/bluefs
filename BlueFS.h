@@ -10,6 +10,7 @@
 #include "common/BlueFSContext.h"
 #include "common/interval_set.h"
 #include "dev/BlockDevice.h"
+#include "Allocator/Allocator.h"
 
 #include "boost/intrusive/list.hpp"
 #include "boost/intrusive_ptr.hpp"
@@ -47,7 +48,7 @@ private:
             num_writers(0),
             num_reading(0),
             nref(0) {}
-        ~File() override {
+        ~File() {
             assert(num_readers.load() == 0);
             assert(num_writers.load() == 0);
             assert(num_reading.load() == 0);
@@ -88,7 +89,7 @@ private:
 	        &File::dirty_item> > dirty_file_list_t;
 
     struct Dir{
-        std::map<string,FileRef> file_map;
+        std::map<std::string,FileRef> file_map;
         mutable std::atomic<uint64_t> nref;
 
         Dir() : nref(0) {}
@@ -132,11 +133,9 @@ private:
         IOContext* iocv; ///< for each bdev
 
         FileWriter(FileRef f) : file(f),
-            pos(0),
-            buffer_appender(buffer.get_page_aligned_appender(
-                    g_conf->bluefs_alloc_size / CEPH_PAGE_SIZE)) {
+            pos(0) {
             ++file->num_writers;
-            iocv.fill(nullptr);
+            iocv = nullptr;
         }
         // NOTE: caller must call BlueFS::close_writer()
         ~FileWriter() {
@@ -212,7 +211,7 @@ private:
 private:
     std::mutex lock;
     // cache
-    std::map<string, DirRef> dir_map;              ///< dirname -> Dir
+    std::map<std::string, DirRef> dir_map;              ///< dirname -> Dir
     std::unordered_map<uint64_t, FileRef> file_map; ///< ino -> File
 
     // map of dirty files, files of same dirty_seq are grouped into list.
@@ -234,11 +233,11 @@ private:
 
     BlockDevice*    bdev;                                       ///< block devices we can use
     IOContext*      ioc;                                        ///< IOContexts for bdevs
-    std::set<interval_set<uint64_t>> block_all;          ///< extents in bdev we own
+    interval_set<uint64_t> block_all;          ///< extents in bdev we own
     uint64_t        block_total;                                ///< sum of block_all
     Allocator*      alloc;                                      ///< allocators for bdevs
     uint64_t        alloc_size;                                 ///< alloc size for each device
-    std::set<std::pair<uint64_t, uint64_t>> pending_release     ///< extents to release
+    std::set<std::pair<uint64_t, uint64_t>> pending_release;    ///< extents to release
 
     void _init_alloc();
     void _stop_alloc();
@@ -253,7 +252,7 @@ private:
     int _flush(FileWriter *h, bool force);
     int _fsync(FileWriter *h, std::unique_lock<std::mutex>& l);
 
-    void _claim_completed_aios(FileWriter *h, list<aio_t> *ls);
+    void _claim_completed_aios(FileWriter *h, std::list<aio_t> *ls);
     void wait_for_aio(FileWriter *h);  // safe to call without a lock
 
     int _flush_and_sync_log(std::unique_lock<std::mutex>& l,
@@ -310,7 +309,7 @@ private:
     }
 
 public:
-    BlueFS(CephContext* cct) : cct(cct) {}
+    BlueFS(BlueFSContext* cct) : cct(cct) {}
     ~BlueFS();
 
     // the super is always stored on bdev 0
@@ -318,28 +317,28 @@ public:
     int mount();
     void umount();
 
-    void collect_metadata(map<string,string> *pm);
+    void collect_metadata(std::map<std::string,std::string> *pm);
     uint64_t get_alloc_size() {
         return alloc_size;
     }
     int fsck();
 
     uint64_t get_used();
-    uint64_t get_total(unsigned id);
-    uint64_t get_free(unsigned id);
+    uint64_t get_total();
+    uint64_t get_free();
     void get_usage(std::pair<uint64_t,uint64_t> *usage); // [<free,total> ...]
 
     void dump_block_extents(std::ostream& out);
 
     int open_for_write(
-        const string& dir,
-        const string& file,
+        const std::string& dir,
+        const std::string& file,
         FileWriter **h,
         bool overwrite);
 
     int open_for_read(
-        const string& dir,
-        const string& file,
+        const std::string& dir,
+        const std::string& file,
         FileReader **h,
         bool random = false);
 
@@ -348,21 +347,21 @@ public:
         _close_writer(h);
     }
 
-    int rename(const string& old_dir, const string& old_file,
-            const string& new_dir, const string& new_file);
+    int rename(const std::string& old_dir, const std::string& old_file,
+            const std::string& new_dir, const std::string& new_file);
 
-    int readdir(const string& dirname, vector<string> *ls);
+    int readdir(const std::string& dirname, std::vector<std::string> *ls);
 
-    int unlink(const string& dirname, const string& filename);
-    int mkdir(const string& dirname);
-    int rmdir(const string& dirname);
+    int unlink(const std::string& dirname, const std::string& filename);
+    int mkdir(const std::std::string& dirname);
+    int rmdir(const std::string& dirname);
     bool wal_is_rotational();
 
-    bool dir_exists(const string& dirname);
-    int stat(const string& dirname, const string& filename,
+    bool dir_exists(const std::string& dirname);
+    int stat(const std::string& dirname, const std::string& filename,
         uint64_t *size, utime_t *mtime);
 
-    int lock_file(const string& dirname, const string& filename, FileLock **p);
+    int lock_file(const std::string& dirname, const std::string& filename, FileLock **p);
     int unlock_file(FileLock *l);
 
     void flush_log();
@@ -371,7 +370,7 @@ public:
     /// sync any uncommitted state to disk
     void sync_metadata();
 
-    int add_block_device(const string& path);
+    int add_block_device(const std::string& path);
     bool bdev_support_label();
     uint64_t get_block_device_size();
 

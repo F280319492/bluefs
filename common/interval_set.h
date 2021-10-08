@@ -712,4 +712,19 @@ private:
   Map m;   // map start -> len
 };
 
+template<typename T>
+inline std::ostream& operator<<(std::ostream& out, const interval_set<T> &s) {
+    out << "[";
+    const char *prequel = "";
+    for (typename interval_set<T>::const_iterator i = s.begin();
+         i != s.end();
+         ++i)
+    {
+        out << prequel << i.get_start() << "~" << i.get_len();
+        prequel = ",";
+    }
+    out << "]";
+    return out;
+}
+
 #endif //INTERVAL_SET_H
