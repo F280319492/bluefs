@@ -19,10 +19,11 @@ std::ostream& operator<<(std::ostream& out, const bluefs_extent_t& o) {
 }
 
 void bluefs_fnode_t::encode(bufferlist& bl) const {
+    size_t len = extents.size();
     bl.encode_num(&ino, sizeof(ino));
     bl.encode_num(&size, sizeof(size));
     mtime.encode(bl);
-    bl.encode_num(extents.size(), sizeof(extents.size()));
+    bl.encode_num(&len, sizeof(len));
     for (auto& p : extents) {
         p.encode(bl);
     }

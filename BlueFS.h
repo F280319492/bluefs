@@ -298,7 +298,10 @@ private:
     }
 
 public:
-    BlueFS(BlueFSContext* cct) : cct(cct) {}
+    BlueFS(BlueFSContext* cct) : cct(cct),
+        bdev(nullptr),
+        ioc(nullptr),
+        block_total(0) {}
     ~BlueFS();
 
     // the super is always stored on bdev 0
