@@ -233,6 +233,14 @@ public:
     bool decode_str(std::string* str);
     bool decode_bufferlist(bufferlist* bl);
 
+    void substr_of(const bufferlist& other, unsigned off, unsigned len) {
+        size_t alloc_size = align_up(len, (uint32_t)ALLOC_SIZE);
+        void* buf = aligned_malloc(alloc_size, ALLOC_SIZE);
+        copy(buf, len, off);
+        append((char*)buf, (size_t)len, alloc_size, true, true);
+    }
+    }
+
 private:
     bufferlist_v bl;
     uint32_t capacity;

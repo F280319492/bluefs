@@ -46,15 +46,22 @@ bool bufferlist::encode_num(const T v) {
 }
 
 bool bufferlist::encode_str(const std::string& str) {
-
+    uint32_t len = str.length();
+    encode_num(len);
+    if (len) {
+        encode(str.data(), len);
+    }
 }
 
 bool bufferlist::encode_bufferlist(const bufferlist& bl) {
     uint32_t len = bl.length();
-    void* buf = malloc(len);
-    bl.copy(buf, len);
     encode_num(len);
-    encode(buf, len);
+    if (len) {
+        void* buf = malloc(len);
+        bl.copy(buf, len);
+        encode_num(len);
+        free(buf);
+    }
 }
 
 bool bufferlist::decode(void* buf, size_t len) {
@@ -82,7 +89,14 @@ bool bufferlist::decode_num(T* v) {
 
 
 bool bufferlist::decode_str(std::string* str) {
-
+    uint32_t len;
+    decode_num(&len);
+    if (len) {
+        void* buf = malloc(len);
+        copy(buf, len);
+        str->append((char*)buf, len);
+        free(buf);
+    }
 }
 
 bool bufferlist::decode_bufferlist(bufferlist* bl) {

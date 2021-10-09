@@ -124,16 +124,13 @@ private:
 
     struct FileWriter {
         FileRef file;
-        uint64_t pos;           ///< start offset for buffer
         bufferlist buffer;      ///< new data to write (at end of file)
-        bufferlist tail_block;  ///< existing partial block at end of file, if any
         int writer_type = 0;    ///< WRITER_*
 
         std::mutex lock;
         IOContext* iocv; ///< for each bdev
 
-        FileWriter(FileRef f) : file(f),
-            pos(0) {
+        FileWriter(FileRef f) : file(f) {
             ++file->num_writers;
             iocv = nullptr;
         }
@@ -237,7 +234,7 @@ private:
     uint64_t        block_total;                                ///< sum of block_all
     Allocator*      alloc;                                      ///< allocators for bdevs
     uint64_t        alloc_size;                                 ///< alloc size for each device
-    std::set<std::pair<uint64_t, uint64_t>> pending_release;    ///< extents to release
+    interval_set<uint64_t> pending_release;    ///< extents to release
 
     void _init_alloc();
     void _stop_alloc();
@@ -247,8 +244,8 @@ private:
     FileRef _get_file(uint64_t ino);
     void _drop_link(FileRef f);
 
-    int _allocate(uint8_t bdev, uint64_t len, bluefs_fnode_t* node);
-    int _flush_range(FileWriter *h, uint64_t offset, uint64_t length);
+    int _allocate(uint64_t len, bluefs_fnode_t* node);
+    int _flush_all(FileWriter *h);
     int _flush(FileWriter *h, bool force);
     int _fsync(FileWriter *h, std::unique_lock<std::mutex>& l);
 
@@ -268,7 +265,6 @@ private:
     void flush_bdev();  // this is safe to call without a lock
 
     int _preallocate(FileRef f, uint64_t off, uint64_t len);
-    int _truncate(FileWriter *h, uint64_t off);
 
     int _read(
         FileReader *h,   ///< [in] read from here
@@ -286,9 +282,7 @@ private:
         FileReader *h,   ///< [in] read from here
         uint64_t offset, ///< [in] offset
         size_t len,      ///< [in] this many bytes
-        char *out, 
-        rocksdb::Slice* result,
-        rocksdb::Context* ctx);      ///< [out] optional: or copy it here
+        char *out);      ///< [out] optional: or copy it here
 
     void _invalidate_cache(FileRef f, uint64_t offset, uint64_t length);
 
@@ -355,7 +349,6 @@ public:
     int unlink(const std::string& dirname, const std::string& filename);
     int mkdir(const std::std::string& dirname);
     int rmdir(const std::string& dirname);
-    bool wal_is_rotational();
 
     bool dir_exists(const std::string& dirname);
     int stat(const std::string& dirname, const std::string& filename,
@@ -407,11 +400,11 @@ public:
         return _read_random(h, offset, len, out);
     }
     int read_random(FileReader *h, uint64_t offset, size_t len,
-        char *out, rocksdb::Slice* result, rocksdb::Context* ctx) {
+        char *out) {
         // no need to hold the global lock here; we only touch h and
         // h->file, and read vs write or delete is already protected (via
         // atomics and asserts).
-        return _read_random(h, offset, len, out, result, ctx);
+        return _read_random(h, offset, len, out);
     }
 
     void invalidate_cache(FileRef f, uint64_t offset, uint64_t len) {
@@ -421,10 +414,6 @@ public:
     int preallocate(FileRef f, uint64_t offset, uint64_t len) {
         std::lock_guard<std::mutex> l(lock);
         return _preallocate(f, offset, len);
-    }
-    int truncate(FileWriter *h, uint64_t offset) {
-        std::lock_guard<std::mutex> l(lock);
-        return _truncate(h, offset);
     }
 };
 
