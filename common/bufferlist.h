@@ -222,14 +222,17 @@ public:
         }
     }
     bool encode(const void* buf, size_t len);
-    template <typename T>  
-    bool encode_num(const T v);
+    bool encode_num(const void* buf, size_t len) {
+        encode(buf, len);
+    }
+
     bool encode_str(const std::string& str);
     bool encode_bufferlist(const bufferlist& bl);
 
     bool decode(void* buf, size_t len);
-    template <typename T>  
-    bool decode_num(T* v);
+    bool decode_num(void* buf, size_t len) {
+        decode(buf, len);
+    }
     bool decode_str(std::string* str);
     bool decode_bufferlist(bufferlist* bl);
 

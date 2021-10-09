@@ -26,6 +26,7 @@ public:
         int64_t hint, PExtentVector *extents) override;
     
     void release(const PExtentVector& release_set) override;
+    void release(const interval_set<uint64_t>& release_set) override;
 
     uint64_t get_free() override;
     double get_fragmentation(uint64_t alloc_unit) override;

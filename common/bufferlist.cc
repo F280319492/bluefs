@@ -21,6 +21,11 @@ void aligned_free(void *p2){
     }
 }
 
+uint32_t bufferlist::crc32c(uint32_t) const {
+    return -1;
+}
+
+
 bool bufferlist::encode(const void* buf, size_t len) {
     if (bl.empty() || bl.back().len+len > bl.back().cap) {
         size_t alloc_size = std::max(len, (size_t)ALLOC_SIZE);
@@ -38,11 +43,6 @@ bool bufferlist::encode(const void* buf, size_t len) {
     node.len += len;
 
     capacity += len;
-}
-
-template <typename T>
-bool bufferlist::encode_num(const T v) {
-    return encode(&v, sizeof(v));
 }
 
 bool bufferlist::encode_str(const std::string& str) {
@@ -81,12 +81,6 @@ bool bufferlist::decode(void* buf, size_t len) {
     }
     return true; 
 }
-
-template <typename T>
-bool bufferlist::decode_num(T* v) {
-    return decode(v, sizeof(*v));
-}
-
 
 bool bufferlist::decode_str(std::string* str) {
     uint32_t len;

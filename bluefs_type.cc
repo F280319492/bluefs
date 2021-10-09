@@ -1,13 +1,13 @@
 #include "bluefs_type.h"
 
 void bluefs_extent_t::encode(bufferlist& bl) const {
-    bl.encode_num(offset);
-    bl.encode_num(length);
+    bl.encode_num(&offset, sizeof(offset));
+    bl.encode_num(&length, sizeof(length));
 }
 
 void bluefs_extent_t::decode(bufferlist& bl) {
-    bl.decode_num(&offset);
-    bl.decode_num(&length);
+    bl.decode_num(&offset, sizeof(offset));
+    bl.decode_num(&length, sizeof(length));
 }
 
 void bluefs_extent_t::dump() const {
@@ -19,21 +19,21 @@ std::ostream& operator<<(std::ostream& out, const bluefs_extent_t& o) {
 }
 
 void bluefs_fnode_t::encode(bufferlist& bl) const {
-    bl.encode_num(ino);
-    bl.encode_num(size);
+    bl.encode_num(&ino, sizeof(ino));
+    bl.encode_num(&size, sizeof(size));
     mtime.encode(bl);
-    bl.encode_num(extents.size());
+    bl.encode_num(extents.size(), sizeof(extents.size()));
     for (auto& p : extents) {
         p.encode(bl);
     }
 }
 
 void bluefs_fnode_t::decode(bufferlist& bl) {
-    bl.decode_num(&ino);
-    bl.decode_num(&size);
+    bl.decode_num(&ino, sizeof(ino));
+    bl.decode_num(&size, sizeof(size));
     mtime.decode(bl);
     size_t extents_len;
-    bl.decode_num(&extents_len);
+    bl.decode_num(&extents_len, sizeof(extents_len));
     for (size_t i = 0; i < extents_len; i++) {
         extents.push_back(bluefs_extent_t());
         extents.back().decode(bl);
@@ -74,16 +74,16 @@ std::ostream& operator<<(std::ostream& out, const bluefs_fnode_t& file) {
 
 
 void bluefs_super_t::encode(bufferlist& bl) const {
-    bl.encode_num(uuid);
-    bl.encode_num(version);
-    bl.encode_num(block_size);
+    bl.encode_num(&uuid, sizeof(uuid));
+    bl.encode_num(&version, sizeof(version));
+    bl.encode_num(&block_size, sizeof(block_size));
     log_fnode.encode(bl);
 }
 
 void bluefs_super_t::decode(bufferlist& bl) {
-    bl.decode_num(&uuid);
-    bl.decode_num(&version);
-    bl.decode_num(&block_size);
+    bl.decode_num(&uuid, sizeof(uuid));
+    bl.decode_num(&version, sizeof(version));
+    bl.decode_num(&block_size, sizeof(block_size));
     log_fnode.decode(bl);
 }
 
@@ -105,17 +105,17 @@ std::ostream& operator<<(std::ostream& out, const bluefs_super_t& s) {
 
 void bluefs_transaction_t::encode(bufferlist& bl) const {
     uint32_t crc = op_bl.crc32c(-1);
-    bl.encode_num(uuid);
-    bl.encode_num(seq);
-    bl.encode_num(crc);
+    bl.encode_num(&uuid, sizeof(uuid));
+    bl.encode_num(&seq, sizeof(seq));
+    bl.encode_num(&crc, sizeof(crc));
     bl.encode_bufferlist(op_bl);
 }
 
 void bluefs_transaction_t::decode(bufferlist& bl) {
     uint32_t crc;
-    bl.decode_num(&uuid);
-    bl.decode_num(&seq);
-    bl.decode_num(&crc);
+    bl.decode_num(&uuid, sizeof(uuid));
+    bl.decode_num(&seq, sizeof(seq));
+    bl.decode_num(&crc, sizeof(crc));
     bl.decode_bufferlist(&op_bl);
     uint32_t actual = op_bl.crc32c(-1);
     if (actual != crc)

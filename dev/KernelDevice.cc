@@ -110,7 +110,7 @@ int KernelDevice::open(const std::string& p)
         int64_t s;
         r = get_block_device_size(fd_direct, &s);
         if (r < 0) {
-        goto out_fail;
+            goto out_fail;
         }
         size = s;
     } else {
@@ -565,7 +565,7 @@ int KernelDevice::read_random(uint64_t off, uint64_t len, char *buf,
         if (r < 0) {
             r = -errno;
             derr << __func__ << " direct_aligned_read" << " 0x" << std::hex
-                 << off << "~" << left << std::dec << " error: " << cpp_strerror(r)
+                 << off << "~" << len << std::dec << " error: " << cpp_strerror(r)
                  << dendl;
             goto out;
         }

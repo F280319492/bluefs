@@ -8,12 +8,12 @@
 
 #include "bluefs_type.h"
 #include "common/BlueFSContext.h"
-#include "common/interval_set.h"
 #include "dev/BlockDevice.h"
 #include "Allocator/Allocator.h"
 
 #include "boost/intrusive/list.hpp"
 #include "boost/intrusive_ptr.hpp"
+#include "boost/algorithm/string/predicate.hpp"
 
 class Allocator;
 

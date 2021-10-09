@@ -13,10 +13,17 @@ struct bulefs_config {
     uint64_t bdev_block_size;
     uint32_t bdev_aio_reap_max;
     uint32_t bdev_aio_poll_ms;
-    uint64_t bluefs_max_log_runway;
-    uint64_t bluefs_alloc_size;
-    std::string bluefs_allocator;
-    uint64_t bluefs_max_prefetch;
+    uint64_t bluefs_max_log_runway; //4194304
+    std::string bluefs_allocator; //stable
+    uint64_t bluefs_max_prefetch; //1048576
+    bool bluefs_buffered_io;
+    bool bluefs_compact_log_sync; //false
+    uint64_t bluefs_log_compact_min_size; //16777216
+    float bluefs_log_compact_min_ratio; //5.000000
+    uint64_t bluefs_min_log_runway; //1048576
+    bool bluefs_preextend_wal_files; //false
+    bool bluefs_sync_write; //false
+    uint64_t bluefs_min_flush_size; //524288
 };
 
 class BlueFSContext {

@@ -9,6 +9,7 @@
 
 #include "common/BlueFSContext.h"
 #include "common/debug.h"
+#include "common/interval_set.h"
 
 // pextent: physical extent
 struct bluefs_pextent_t
@@ -64,6 +65,7 @@ public:
   /* Bulk release. Implementations may override this method to handle the whole
    * set at once. This could save e.g. unnecessary mutex dance. */
   virtual void release(const PExtentVector& release_set) = 0;
+  virtual void release(const interval_set<uint64_t>& release_set) = 0;
 
   virtual void dump() = 0;
   virtual void dump(std::function<void(uint64_t offset, uint64_t length)> notify) = 0;

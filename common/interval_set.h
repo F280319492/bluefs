@@ -209,7 +209,7 @@ public:
 
   // helpers
 private:
-  auto find_inc(T start) const {
+  typename Map::const_iterator find_inc(T start) const {
     auto p = m.lower_bound(start);  // p->first >= start
     if (p != m.begin() &&
       (p == m.end() || p->first > start)) {
@@ -220,7 +220,7 @@ private:
     return p;
   }
 
-  auto find_inc_m(T start) {
+  typename Map::iterator find_inc_m(T start) {
     auto p = m.lower_bound(start);
     if (p != m.begin() &&
       (p == m.end() || p->first > start)) {
@@ -231,7 +231,7 @@ private:
     return p;
   }
 
-  auto find_adj(T start) const {
+  typename Map::const_iterator find_adj(T start) const {
     auto p = m.lower_bound(start);
     if (p != m.begin() &&
       (p == m.end() || p->first > start)) {
@@ -242,7 +242,7 @@ private:
     return p;
   }
 
-  auto find_adj_m(T start) {
+  typename Map::iterator find_adj_m(T start) {
     auto p = m.lower_bound(start);
     if (p != m.begin() &&
       (p == m.end() || p->first > start)) {

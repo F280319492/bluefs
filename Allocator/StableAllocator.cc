@@ -64,6 +64,26 @@ void StableAllocator::release(const PExtentVector& release_set) {
     }
 }
 
+void StableAllocator::release(const interval_set<uint64_t>& release_set) {
+    uint64_t off, len;
+    std::lock_guard<std::mutex> l(lock);
+    for (auto& p_extent : release_set) {
+        off = p_extent.first;
+        len = p_extent.second;
+        assert(len > 0 && len % stable_size == 0);
+        while (len) {
+            if (free_list.find(off) == free_list.end()) {
+                free_list.insert(off);
+                num_free += stable_size;
+            } else {
+                dout(1) << __func__ << " offset " << off << " has in free list." << dendl;
+            }
+            off += stable_size;
+            len -= stable_size;
+        }
+    }
+}
+
 uint64_t StableAllocator::get_free() {
     std::lock_guard<std::mutex> l(lock);
     return num_free;

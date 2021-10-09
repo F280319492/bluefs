@@ -1,6 +1,8 @@
 #ifndef UTIME_H
 #define UTIME_H
 
+#pragma once
+
 #include <sys/time.h>
 #include <iostream>
 
@@ -24,13 +26,13 @@ struct utime_t {
     }
 
     void encode(bufferlist& bl) const {
-        bl.encode_num(tv_sec);
-        bl.encode_num(tv_usec);
+        bl.encode_num(&tv_sec, sizeof(tv_sec));
+        bl.encode_num(&tv_usec, sizeof(tv_usec));
     }
 
     void decode(bufferlist& bl) {
-        bl.decode_num(&tv_sec);
-        bl.decode_num(&tv_usec);
+        bl.decode_num(&tv_sec, sizeof(tv_sec));
+        bl.decode_num(&tv_usec, sizeof(tv_usec));
     }
 };
 
@@ -41,11 +43,6 @@ inline std::ostream& operator<<(std::ostream& out, const utime_t& t)
     return out;
 }
 
-utime_t clock_now() {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    utime_t n(tv);
-    return n;
-}
+utime_t clock_now();
 
 #endif //UTIME_H
