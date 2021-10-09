@@ -136,53 +136,64 @@ struct bluefs_transaction_t {
     }
 
     void op_init() {
-        op_bl.encode_num((uint8_t)OP_INIT);
+        uint8_t op = OP_INIT;
+        op_bl.encode_num(&op, sizeof(op));
     }
     void op_alloc_add(uint64_t offset, uint64_t length) {
-        op_bl.encode_num((uint8_t)OP_ALLOC_ADD);
-        op_bl.encode_num(offset);
-        op_bl.encode_num(length);
+        uint8_t op = OP_ALLOC_ADD;
+        op_bl.encode_num(&op, sizeof(op));
+        op_bl.encode_num(&offset, sizeof(offset));
+        op_bl.encode_num(&length, sizeof(length));
     }
     void op_alloc_rm(uint64_t offset, uint64_t length) {
-        op_bl.encode_num((uint8_t)OP_ALLOC_RM);
-        op_bl.encode_num(offset);
-        op_bl.encode_num(length);
+        uint8_t op = OP_ALLOC_RM;
+        op_bl.encode_num(&op, sizeof(op));
+        op_bl.encode_num(&offset, sizeof(offset));
+        op_bl.encode_num(&length, sizeof(length));
     }
     void op_dir_create(const std::string& dir) {
-        op_bl.encode_num((uint8_t)OP_DIR_CREATE);
+        uint8_t op = OP_DIR_CREATE;
+        op_bl.encode_num(&op, sizeof(op));
         op_bl.encode_str(dir);
     }
     void op_dir_remove(const std::string& dir) {
-        op_bl.encode_num((uint8_t)OP_DIR_REMOVE);
-         op_bl.encode_str(dir);
+        uint8_t op = OP_DIR_REMOVE;
+        op_bl.encode_num(&op, sizeof(op));
+        op_bl.encode_str(dir);
     }
     void op_dir_link(const std::string& dir, const std::string& file, uint64_t ino) {
-        op_bl.encode_num((uint8_t)OP_DIR_LINK);
+        uint8_t op = OP_DIR_LINK;
+        op_bl.encode_num(&op, sizeof(op));
         op_bl.encode_str(dir);
         op_bl.encode_str(file);
-        op_bl.encode_num(ino);
+        op_bl.encode_num(&ino, sizeof(ino));
     }
     void op_dir_unlink(const std::string& dir, const std::string& file) {
-        op_bl.encode_num((uint8_t)OP_DIR_UNLINK);
+        uint8_t op = OP_DIR_UNLINK;
+        op_bl.encode_num(&op, sizeof(op));
         op_bl.encode_str(dir);
         op_bl.encode_str(file);
     }
     void op_file_update(const bluefs_fnode_t& file) {
-        op_bl.encode_num((uint8_t)OP_FILE_UPDATE);
+        uint8_t op = OP_FILE_UPDATE;
+        op_bl.encode_num(&op, sizeof(op));
         file.encode(op_bl);
     }
     void op_file_remove(uint64_t ino) {
-        op_bl.encode_num((uint8_t)OP_FILE_REMOVE);
-        op_bl.encode_num(ino);
+        uint8_t op = OP_FILE_REMOVE;
+        op_bl.encode_num(&op, sizeof(op));
+        op_bl.encode_num(&ino, sizeof(ino));
     }
     void op_jump(uint64_t next_seq, uint64_t offset) {
-        op_bl.encode_num((uint8_t)OP_JUMP);
-        op_bl.encode_num(next_seq);
-        op_bl.encode_num(offset);
+        uint8_t op = OP_JUMP;
+        op_bl.encode_num(&op, sizeof(op));
+        op_bl.encode_num(&next_seq, sizeof(next_seq));
+        op_bl.encode_num(&offset, sizeof(offset));
     }
     void op_jump_seq(uint64_t next_seq) {
-        op_bl.encode_num((uint8_t)OP_JUMP_SEQ);
-        op_bl.encode_num(next_seq);
+        uint8_t op = OP_JUMP_SEQ;
+        op_bl.encode_num(&op, sizeof(op));
+        op_bl.encode_num(&next_seq, sizeof(next_seq));
     }
 
     void encode(bufferlist& bl) const;

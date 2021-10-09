@@ -47,7 +47,7 @@ bool bufferlist::encode(const void* buf, size_t len) {
 
 bool bufferlist::encode_str(const std::string& str) {
     uint32_t len = str.length();
-    encode_num(len);
+    encode_num(&len, sizeof(len));
     if (len) {
         encode(str.data(), len);
     }
@@ -55,11 +55,11 @@ bool bufferlist::encode_str(const std::string& str) {
 
 bool bufferlist::encode_bufferlist(const bufferlist& bl) {
     uint32_t len = bl.length();
-    encode_num(len);
+    encode_num(&len, sizeof(len));
     if (len) {
         void* buf = malloc(len);
         bl.copy(buf, len);
-        encode_num(len);
+        encode(buf, len);
         free(buf);
     }
 }
@@ -84,7 +84,7 @@ bool bufferlist::decode(void* buf, size_t len) {
 
 bool bufferlist::decode_str(std::string* str) {
     uint32_t len;
-    decode_num(&len);
+    decode_num(&len, sizeof(len));
     if (len) {
         void* buf = malloc(len);
         copy(buf, len);
@@ -96,11 +96,11 @@ bool bufferlist::decode_str(std::string* str) {
 bool bufferlist::decode_bufferlist(bufferlist* bl) {
     uint32_t len;
     void* buf;
-    decode_num(&len);
-
-    size_t alloc_size = align_up(len, (uint32_t)ALLOC_SIZE);
-    buf = aligned_malloc(alloc_size, ALLOC_SIZE);
-    decode(buf, len);
-
-    bl->append((char*)buf, (size_t)len, alloc_size, true, true);
+    decode_num(&len, sizeof(len));
+    if (len) {
+        size_t alloc_size = align_up(len, (uint32_t)ALLOC_SIZE);
+        buf = aligned_malloc(alloc_size, ALLOC_SIZE);
+        decode(buf, len);
+        bl->append((char*)buf, (size_t)len, alloc_size, true, true);
+    }
 }

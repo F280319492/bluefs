@@ -291,7 +291,7 @@ int BlueFS::_write_super()
     bufferlist bl;
     super.encode(bl);
     uint32_t crc = bl.crc32c(-1);
-    bl.encode_num(crc);
+    bl.encode_num(&crc, sizeof(crc));
     dout(10) << __func__ << " super block length(encoded): " << bl.length() << dendl;
     dout(10) << __func__ << " superblock " << super.version << dendl;
     dout(10) << __func__ << " log_fnode " << super.log_fnode << dendl;
@@ -491,8 +491,8 @@ int BlueFS::_replay(bool noop)
                 case bluefs_transaction_t::OP_ALLOC_RM:
                 {
                     uint64_t offset, length;
-                    bl.decode_num(&offset);
-                    bl.decode_num(&length);
+                    bl.decode_num(&offset, sizeof(offset));
+                    bl.decode_num(&length, sizeof(length));
                     dout(20) << __func__ << " 0x" << std::hex << pos
                              << ":  op_alloc_rm :0x" << offset << "~" << length << std::dec
                              << dendl;
