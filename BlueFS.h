@@ -278,11 +278,6 @@ private:
         uint64_t offset, ///< [in] offset
         size_t len,      ///< [in] this many bytes
         char *out);      ///< [out] optional: or copy it here
-    int _read_random(                                                
-        FileReader *h,   ///< [in] read from here
-        uint64_t offset, ///< [in] offset
-        size_t len,      ///< [in] this many bytes
-        char *out);      ///< [out] optional: or copy it here
 
     void _invalidate_cache(FileRef f, uint64_t offset, uint64_t length);
 
@@ -347,7 +342,7 @@ public:
     int readdir(const std::string& dirname, std::vector<std::string> *ls);
 
     int unlink(const std::string& dirname, const std::string& filename);
-    int mkdir(const std::std::string& dirname);
+    int mkdir(const std::string& dirname);
     int rmdir(const std::string& dirname);
 
     bool dir_exists(const std::string& dirname);
@@ -377,10 +372,6 @@ public:
         std::lock_guard<std::mutex> l(lock);
         _flush(h, false);
     }
-    void flush_range(FileWriter *h, uint64_t offset, uint64_t length) {
-        std::lock_guard<std::mutex> l(lock);
-        _flush_range(h, offset, length);
-    }
     int fsync(FileWriter *h) {
         std::unique_lock<std::mutex> l(lock);
         return _fsync(h, l);
@@ -394,13 +385,6 @@ public:
     }
     int read_random(FileReader *h, uint64_t offset, size_t len,
             char *out) {
-        // no need to hold the global lock here; we only touch h and
-        // h->file, and read vs write or delete is already protected (via
-        // atomics and asserts).
-        return _read_random(h, offset, len, out);
-    }
-    int read_random(FileReader *h, uint64_t offset, size_t len,
-        char *out) {
         // no need to hold the global lock here; we only touch h and
         // h->file, and read vs write or delete is already protected (via
         // atomics and asserts).

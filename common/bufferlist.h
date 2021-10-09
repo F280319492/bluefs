@@ -239,6 +239,15 @@ public:
         copy(buf, len, off);
         append((char*)buf, (size_t)len, alloc_size, true, true);
     }
+
+    bool end() {
+        if (!bl.size()) {
+            return true;
+        }
+        if (idx == bl.size() - 1 && bl.back().len == off) {
+            return true;
+        }
+        return false;
     }
 
 private:

@@ -105,6 +105,7 @@ public:
         bufferlist *pbl,
         IOContext *ioc,
         bool buffered) = 0;
+    virtual int read_random(uint64_t off, uint64_t len, char *buf, bool buffered) = 0;
       
     virtual int write(
         uint64_t off,

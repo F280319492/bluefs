@@ -465,7 +465,7 @@ int KernelDevice::read(uint64_t off, uint64_t len, bufferlist *pbl,
         goto out;
     }
     assert((uint64_t)r == len);
-    pbl->append(p, len, true);
+    pbl->append(p, len, true, true);
 
 out:
     return r < 0 ? r : 0;
@@ -524,6 +524,54 @@ int KernelDevice::direct_read_unaligned(uint64_t off, uint64_t len, char *buf)
 
 out:
     aligned_free(p);
+    return r < 0 ? r : 0;
+}
+
+int KernelDevice::read_random(uint64_t off, uint64_t len, char *buf,
+                              bool buffered)
+{
+    dout(5) << __func__ << " 0x" << std::hex << off << "~" << len << std::dec
+            << dendl;
+    assert(len > 0);
+    assert(off < size);
+    assert(off + len <= size);
+    int r = 0;
+
+    //if it's direct io and unaligned, we have to use a internal buffer
+    if (!buffered && ((off % block_size != 0)
+                      || (len % block_size != 0)
+                      || (uintptr_t(buf) % block_size != 0)))
+        return direct_read_unaligned(off, len, buf);
+
+    if (buffered) {
+        //buffered read
+        char *t = buf;
+        uint64_t left = len;
+        while (left > 0) {
+            r = ::pread(fd_buffered, t, left, off);
+            if (r < 0) {
+                r = -errno;
+                derr << __func__ << " 0x" << std::hex << off << "~" << left
+                     << std::dec << " error: " << cpp_strerror(r) << dendl;
+                goto out;
+            }
+            off += r;
+            t += r;
+            left -= r;
+        }
+    } else {
+        //direct and aligned read
+        r = ::pread(fd_direct, buf, len, off);
+        if (r < 0) {
+            r = -errno;
+            derr << __func__ << " direct_aligned_read" << " 0x" << std::hex
+                 << off << "~" << left << std::dec << " error: " << cpp_strerror(r)
+                 << dendl;
+            goto out;
+        }
+        assert((uint64_t)r == len);
+    }
+out:
     return r < 0 ? r : 0;
 }
 

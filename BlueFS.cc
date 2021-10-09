@@ -1,4 +1,5 @@
 #include <random>
+#include <exception>
 
 #include "BlueFS.h"
 
@@ -247,10 +248,6 @@ int BlueFS::mount()
     // set up the log for future writes
     log_writer = _create_writer(_get_file(1));
     assert(log_writer->file->fnode.ino == 1);
-    log_writer->pos = log_writer->file->fnode.size;
-    dout(10) << __func__ << " log write pos set to 0x"
-            << std::hex << log_writer->pos << std::dec
-            << dendl;
 
     return 0;
 
@@ -372,7 +369,7 @@ int BlueFS::_replay(bool noop)
         }
         uint64_t more = 0;
         uint64_t seq;
-        uuid_d uuid;
+        uint64_t uuid;
         {
             __u8 a, b;
             uint32_t len;
@@ -416,7 +413,7 @@ int BlueFS::_replay(bool noop)
         try {
             t.decode(bl);
         }
-        catch (buffer::error& e) {
+        catch (std::exception e) {
             dout(10) << __func__ << " 0x" << std::hex << pos << std::dec
                      << ": stop: failed to decode: " << e.what()
                      << dendl;
@@ -427,7 +424,7 @@ int BlueFS::_replay(bool noop)
         dout(10) << __func__ << " 0x" << std::hex << pos << std::dec
                  << ": " << t << dendl;
 
-        while (!p.end()) {
+        while (!bl.end()) {
             __u8 op;
             bl.decode_num(&op);
             switch (op) {
@@ -480,9 +477,8 @@ int BlueFS::_replay(bool noop)
                     uint64_t offset, length;
                     bl.decode_num(&offset);
                     bl.decode_num(&length);
-                    dout(20) << __func__ << " 0x" << std::hex << pos << std::dec
-                             << ":  op_alloc_add " <<
-                             << ":0x" << std::hex << offset << "~" << length << std::dec
+                    dout(20) << __func__ << " 0x" << std::hex << pos << ":  op_alloc_add "
+                             << ":0x" << offset << "~" << length << std::dec
                              << dendl;
                     if (!noop) {
                         block_all.insert(offset, length);
@@ -497,9 +493,8 @@ int BlueFS::_replay(bool noop)
                     uint64_t offset, length;
                     bl.decode_num(&offset);
                     bl.decode_num(&length);
-                    dout(20) << __func__ << " 0x" << std::hex << pos << std::dec
-                             << ":  op_alloc_rm " <<
-                             << ":0x" << std::hex << offset << "~" << length << std::dec
+                    dout(20) << __func__ << " 0x" << std::hex << pos
+                             << ":  op_alloc_rm :0x" << offset << "~" << length << std::dec
                              << dendl;
                     if (!noop) {
                         block_all.erase(offset, length);
@@ -511,13 +506,13 @@ int BlueFS::_replay(bool noop)
 
                 case bluefs_transaction_t::OP_DIR_LINK:
                 {
-                    std:: dirname, filename;
+                    std::string dirname, filename;
                     uint64_t ino;
                     bl.decode_str(&dirname);
                     bl.decode_str(&filename);
-                    bl.decode_num(&ion);
+                    bl.decode_num(&ino);
                     dout(20) << __func__ << " 0x" << std::hex << pos << std::dec
-                             << ":  op_dir_link " << " " << dirname << "/" << filename
+                             << ":  op_dir_link " << dirname << "/" << filename
                              << " to " << ino
                              << dendl;
                     if (!noop) {
@@ -619,7 +614,7 @@ int BlueFS::_replay(bool noop)
                     return -EIO;
             }
         }
-        assert(p.end());
+        assert(bl.end());
 
         // we successfully replayed the transaction; bump the seq and log size
         ++log_seq;
@@ -714,7 +709,7 @@ int BlueFS::_read_random(
     while (len > 0) {
         uint64_t x_off = 0;
         auto p = h->file->fnode.seek(off, &x_off);
-        uint64_t l = MIN(p->length - x_off, len);
+        uint64_t l = std::min(p->length - x_off, len);
         dout(20) << __func__ << " read buffered 0x"
                  << std::hex << x_off << "~" << l << std::dec
                  << " of " << *p << dendl;
