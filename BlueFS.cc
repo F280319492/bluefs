@@ -29,6 +29,7 @@ int BlueFS::add_block_device(const std::string& path)
     dout(1) << __func__ << " path " << path
         << " size " << byte_u_t(bdev->get_size()) << dendl;
     ioc = new IOContext(cct, NULL);
+    add_block_extent(0, align_down(bdev->get_size(), bdev->get_block_size()));
     return 0;
 }
 
@@ -189,15 +190,14 @@ int BlueFS::mkfs()
 void BlueFS::_init_alloc()
 {
     dout(20) << __func__ << dendl;
-    alloc_size = 0;
+    alloc_size = cct->_conf->bluefs_alloc_size;
 
-    if (!bdev) {
+    if (bdev) {
         assert(bdev->get_size());
         assert(alloc_size);
         std::string name = "bluefs-dev";
         dout(1) << __func__ << " alloc_size 0x" << std::hex << alloc_size
             << " size 0x" << bdev->get_size() << std::dec << dendl;
-        alloc_size = bdev->get_size();
         alloc = Allocator::create(cct, cct->_conf->bluefs_allocator,
                     bdev->get_size(),
                     alloc_size, name);

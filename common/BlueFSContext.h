@@ -24,6 +24,7 @@ struct bulefs_config {
     bool bluefs_preextend_wal_files; //false
     bool bluefs_sync_write; //false
     uint64_t bluefs_min_flush_size; //524288
+    uint64_t bluefs_alloc_size;
 };
 
 class BlueFSContext {

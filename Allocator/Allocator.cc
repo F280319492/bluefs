@@ -13,7 +13,7 @@ Allocator *Allocator::create(BlueFSContext* cct, std::string type,
 {
     Allocator* alloc = nullptr;
     if (type == "stable") {
-        alloc = new StableAllocator(cct, size, name);
+        alloc = new StableAllocator(cct, block_size, name);
     }
     if (alloc == nullptr) {
         derr << "Allocator::" << __func__ << " unknown alloc type "

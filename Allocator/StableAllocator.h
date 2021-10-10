@@ -2,8 +2,6 @@
 #define STABLEALLOCATOR_H
 
 #include <mutex>
-#include <unordered_set>
-#include <set>
 
 #include "Allocator.h"
 
@@ -13,12 +11,12 @@ private:
     std::mutex                      lock;
     uint32_t                        stable_size;
     uint64_t                        num_free;   ///< total bytes in freelist
-    std::set<uint64_t>              free_list;
+    interval_set<uint64_t>          free_list;
 
     uint64_t                        last_alloc;
 
 public:
-    StableAllocator(BlueFSContext* cct, uint32_t size, const std::string& name = "");
+    StableAllocator(BlueFSContext* cct, uint32_t alloc_size, const std::string& name = "");
     ~StableAllocator() override;
 
     int64_t allocate(
