@@ -181,6 +181,8 @@ int BlueFS::mkfs()
     super = bluefs_super_t();
     _close_writer(log_writer);
     log_writer = NULL;
+    block_all.clear();
+    block_total = 0;
     _stop_alloc();
 
     dout(10) << __func__ << " success" << dendl;
@@ -227,6 +229,9 @@ int BlueFS::mount()
         derr << __func__ << " failed to open super: " << cpp_strerror(r) << dendl;
         goto out;
     }
+
+    block_all.clear();
+    block_total = 0;
 
     _init_alloc();
 
@@ -361,14 +366,14 @@ int BlueFS::_replay(bool noop)
             false,  // !random
             true);  // ignore eof
     while (true) {
-        if (read_pos >= super.log_fnode.size) {
-            break;
-        }
-
         assert((log_reader->buf.pos & ~super.block_mask()) == 0);
         uint64_t pos = log_reader->buf.pos;
         uint64_t read_pos = pos;
         bufferlist bl;
+        if (read_pos >= super.log_fnode.size) {
+            break;
+        }
+
         {
             int r = _read(log_reader, &log_reader->buf, read_pos, super.block_size,
                           &bl, NULL);

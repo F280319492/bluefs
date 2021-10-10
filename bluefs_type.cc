@@ -105,7 +105,7 @@ std::ostream& operator<<(std::ostream& out, const bluefs_super_t& s) {
 }
 
 void bluefs_transaction_t::encode(bufferlist& bl) const {
-    uint32_t len = op_bl.length() + 24;
+    uint32_t len = op_bl.length() + 28;
     uint32_t crc = op_bl.crc32c(-1);
     bl.encode_num(&len, sizeof(len));
     bl.encode_num(&uuid, sizeof(uuid));
@@ -116,9 +116,11 @@ void bluefs_transaction_t::encode(bufferlist& bl) const {
 
 void bluefs_transaction_t::decode(bufferlist& bl) {
     uint32_t crc;
+    uint32_t buf_len;
     bl.decode_num(&uuid, sizeof(uuid));
     bl.decode_num(&seq, sizeof(seq));
     bl.decode_num(&crc, sizeof(crc));
+    bl.decode_num(&buf_len, sizeof(buf_len));
     //bl.decode_bufferlist(&op_bl);
     uint32_t actual = op_bl.crc32c(-1);
     if (actual != crc)
