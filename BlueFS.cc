@@ -29,7 +29,7 @@ int BlueFS::add_block_device(const std::string& path)
     dout(1) << __func__ << " path " << path
         << " size " << byte_u_t(bdev->get_size()) << dendl;
     ioc = new IOContext(cct, NULL);
-    add_block_extent(0, align_down(bdev->get_size(), bdev->get_block_size()));
+    add_block_extent(1024*1024, align_down(bdev->get_size()-1024*1024, bdev->get_block_size()));
     return 0;
 }
 
@@ -361,6 +361,10 @@ int BlueFS::_replay(bool noop)
             false,  // !random
             true);  // ignore eof
     while (true) {
+        if (read_pos >= super.log_fnode.size) {
+            break;
+        }
+
         assert((log_reader->buf.pos & ~super.block_mask()) == 0);
         uint64_t pos = log_reader->buf.pos;
         uint64_t read_pos = pos;
@@ -372,31 +376,12 @@ int BlueFS::_replay(bool noop)
             read_pos += r;
         }
         uint64_t more = 0;
-        uint64_t seq;
-        uint64_t uuid;
         {
-            __u8 a, b;
             uint32_t len;
-            bl.decode_num(&a, sizeof(a));
-            bl.decode_num(&b, sizeof(b));
             bl.decode_num(&len, sizeof(len));
-            bl.decode_num(&uuid, sizeof(uuid));
-            bl.decode_num(&seq, sizeof(seq));
-            if (len + 6 > bl.length()) {
-                more = ROUND_UP_TO(len + 6 - bl.length(), super.block_size);
+            if (len > bl.length()) {
+                more = ROUND_UP_TO(len - bl.length(), super.block_size);
             }
-        }
-        if (uuid != super.uuid) {
-            dout(10) << __func__ << " 0x" << std::hex << pos << std::dec
-                     << ": stop: uuid " << uuid << " != super.uuid " << super.uuid
-                     << dendl;
-            break;
-        }
-        if (seq != log_seq + 1) {
-            dout(10) << __func__ << " 0x" << std::hex << pos << std::dec
-                     << ": stop: seq " << seq << " != expected " << log_seq + 1
-                     << dendl;
-            break;
         }
         if (more) {
             dout(20) << __func__ << " need 0x" << std::hex << more << std::dec
@@ -413,6 +398,7 @@ int BlueFS::_replay(bool noop)
             bl.append(t);
             read_pos += r;
         }
+
         bluefs_transaction_t t;
         try {
             t.decode(bl);
@@ -424,7 +410,9 @@ int BlueFS::_replay(bool noop)
             delete log_reader;
             return -EIO;
         }
-        assert(seq == t.seq);
+        assert(t.uuid == super.uuid);
+        assert(t.seq == log_seq + 1);
+
         dout(10) << __func__ << " 0x" << std::hex << pos << std::dec
                  << ": " << t << dendl;
 

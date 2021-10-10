@@ -105,7 +105,9 @@ std::ostream& operator<<(std::ostream& out, const bluefs_super_t& s) {
 }
 
 void bluefs_transaction_t::encode(bufferlist& bl) const {
+    uint32_t len = op_bl.length() + 24;
     uint32_t crc = op_bl.crc32c(-1);
+    bl.encode_num(&len, sizeof(len));
     bl.encode_num(&uuid, sizeof(uuid));
     bl.encode_num(&seq, sizeof(seq));
     bl.encode_num(&crc, sizeof(crc));
@@ -117,7 +119,7 @@ void bluefs_transaction_t::decode(bufferlist& bl) {
     bl.decode_num(&uuid, sizeof(uuid));
     bl.decode_num(&seq, sizeof(seq));
     bl.decode_num(&crc, sizeof(crc));
-    bl.decode_bufferlist(&op_bl);
+    //bl.decode_bufferlist(&op_bl);
     uint32_t actual = op_bl.crc32c(-1);
     if (actual != crc)
     throw std::range_error("error bufferlist len to copy");("bad crc " + std::to_string(actual)

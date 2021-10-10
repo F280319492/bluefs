@@ -131,7 +131,7 @@ private:
         std::mutex lock;
         IOContext* iocv; ///< for each bdev
 
-        FileWriter(FileRef f) : file(f), pos(0), {
+        FileWriter(FileRef f) : file(f), pos(0) {
             ++file->num_writers;
             iocv = nullptr;
         }

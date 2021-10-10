@@ -65,14 +65,15 @@ bool bufferlist::encode_bufferlist(const bufferlist& bl) {
 }
 
 bool bufferlist::decode(void* buf, size_t len) {
-    size_t copy_len = len;
+    size_t copy_len;
     size_t copy_off = 0;
     while (len > 0) {
-        memcpy((char*)buf+off, (char*)bl[idx].buf+off, std::min(len, (size_t)bl[idx].len-off));
+        copy_len = std::min(len, (size_t)bl[idx].len-off);
+        memcpy((char*)buf+copy_off, (char*)bl[idx].buf+off, copy_len);
 
-        copy_off += std::min(len, (size_t)bl[idx].len-off);
-        off += std::min(len, (size_t)bl[idx].len-off);
-        len -= std::min(len, (size_t)bl[idx].len-off);
+        copy_off += copy_len;
+        off += copy_len;
+        len -= copy_len;
 
         if (off == bl[idx].len) {
             idx++;
