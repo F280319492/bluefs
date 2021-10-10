@@ -1,5 +1,6 @@
 
 #include "StableAllocator.h"
+#include "common/bufferlist.h"
 
 StableAllocator::StableAllocator(BlueFSContext* cct, uint32_t alloc_size, const std::string& name)
     : Allocator(name), cct(cct), stable_size(alloc_size), num_free(0), last_alloc(0)
@@ -21,7 +22,7 @@ int64_t StableAllocator::allocate(
     (void) max_alloc_size;
     uint64_t allocated_size = 0;
     uint64_t offset;
-    uint32_t length;
+    uint64_t length;
     std::lock_guard<std::mutex> l(lock);
     while (allocated_size < want_size) {
 
@@ -34,11 +35,11 @@ int64_t StableAllocator::allocate(
 
         auto p = free_list.lower_bound(hint);
         if (p == free_list.end()) {
-            p = free_list.begin()
+            p = free_list.begin();
         }
-        offset = p->first;
-        length = align_up(want_size-allocated_size, stable_size);
-        length = std::min(length, p->second);
+        offset = p.get_start();
+        length = align_up(want_size-allocated_size, (uint64_t)stable_size);
+        length = std::min(length, p.get_len());
         extents->push_back(bluefs_pextent_t(offset, length));
         free_list.erase(offset, length);
 
@@ -73,7 +74,7 @@ void StableAllocator::release(const interval_set<uint64_t>& release_set) {
         len = p_extent.second;
         assert(!len % stable_size);
         assert(!off % stable_size);
-        free_list.insert(oof, len);
+        free_list.insert(off, len);
         //TODO
         num_free += len;
     }
@@ -107,8 +108,8 @@ void StableAllocator::init_add_free(uint64_t offset, uint64_t length) {
     dout(10) << __func__ << " 0x" << std::hex << offset << "~" << length
 	   << std::dec << dendl;
     uint64_t end_off = offset + length;
-    offset = align_up(offset, stable_size);
-    length = align_down(end_off-offset, stable_size);
+    offset = align_up(offset, (uint64_t)stable_size);
+    length = align_down(end_off-offset, (uint64_t)stable_size);
     {
         std::lock_guard<std::mutex> l(lock);
         free_list.insert(offset, length);

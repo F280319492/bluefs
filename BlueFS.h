@@ -124,13 +124,14 @@ private:
 
     struct FileWriter {
         FileRef file;
+        uint64_t pos;           ///< start offset for buffer
         bufferlist buffer;      ///< new data to write (at end of file)
         int writer_type = 0;    ///< WRITER_*
 
         std::mutex lock;
         IOContext* iocv; ///< for each bdev
 
-        FileWriter(FileRef f) : file(f) {
+        FileWriter(FileRef f) : file(f), pos(0), {
             ++file->num_writers;
             iocv = nullptr;
         }
@@ -152,7 +153,7 @@ private:
         }
 
         uint64_t get_effective_write_pos() {
-            return buffer.length();
+            return pos + buffer.length();
         }
     };
 

@@ -248,6 +248,10 @@ int BlueFS::mount()
     // set up the log for future writes
     log_writer = _create_writer(_get_file(1));
     assert(log_writer->file->fnode.ino == 1);
+    log_writer->pos = log_writer->file->fnode.size;
+    dout(10) << __func__ << " log write pos set to 0x"
+             << std::hex << log_writer->pos << std::dec
+             << dendl;
 
     return 0;
 
@@ -1272,7 +1276,7 @@ int BlueFS::_flush_and_sync_log(std::unique_lock<std::mutex>& l,
 
 int BlueFS::_flush_all(FileWriter *h)
 {
-    uint64_t offset = 0;
+    uint64_t offset = h->pos;
     uint64_t length = h->buffer.length();
     dout(10) << __func__ << " " << h << std::hex
              << " 0x" << offset << "~" << length << std::dec

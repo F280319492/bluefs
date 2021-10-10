@@ -14,6 +14,7 @@ set(libbluefs_srcs
     common/aio.cc
 	common/bufferlist.cc
 	common/debug.cc
+	common/utime.cc
     dev/KernelDevice.cc
     dev/BlockDevice.cc
 	Allocator/Allocator.cc
