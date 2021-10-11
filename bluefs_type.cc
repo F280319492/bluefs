@@ -116,12 +116,12 @@ void bluefs_transaction_t::encode(bufferlist& bl) const {
 
 void bluefs_transaction_t::decode(bufferlist& bl) {
     uint32_t crc;
-    uint32_t buf_len;
+    //uint32_t buf_len;
     bl.decode_num(&uuid, sizeof(uuid));
     bl.decode_num(&seq, sizeof(seq));
     bl.decode_num(&crc, sizeof(crc));
-    bl.decode_num(&buf_len, sizeof(buf_len));
-    //bl.decode_bufferlist(&op_bl);
+    //bl.decode_num(&buf_len, sizeof(buf_len));
+    bl.decode_bufferlist(&op_bl);
     uint32_t actual = op_bl.crc32c(-1);
     if (actual != crc)
     throw std::range_error("error bufferlist len to copy");("bad crc " + std::to_string(actual)

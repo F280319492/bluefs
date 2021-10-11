@@ -421,9 +421,9 @@ int BlueFS::_replay(bool noop)
         dout(10) << __func__ << " 0x" << std::hex << pos << std::dec
                  << ": " << t << dendl;
 
-        while (!bl.end()) {
+        while (!t.op_bl.end()) {
             __u8 op;
-            bl.decode_num(&op, sizeof(op));
+            t.op_bl.decode_num(&op, sizeof(op));
             switch (op) {
 
                 case bluefs_transaction_t::OP_INIT:
@@ -436,8 +436,8 @@ int BlueFS::_replay(bool noop)
                 {
                     uint64_t next_seq;
                     uint64_t offset;
-                    bl.decode_num(&next_seq, sizeof(next_seq));
-                    bl.decode_num(&offset, sizeof(offset));
+                    t.op_bl.decode_num(&next_seq, sizeof(next_seq));
+                    t.op_bl.decode_num(&offset, sizeof(offset));
                     dout(20) << __func__ << " 0x" << std::hex << pos << std::dec
                              << ":  op_jump seq " << next_seq
                              << " offset 0x" << std::hex << offset << std::dec << dendl;
@@ -461,7 +461,7 @@ int BlueFS::_replay(bool noop)
                 case bluefs_transaction_t::OP_JUMP_SEQ:
                 {
                     uint64_t next_seq;
-                    bl.decode_num(&next_seq, sizeof(next_seq));
+                    t.op_bl.decode_num(&next_seq, sizeof(next_seq));
                     dout(20) << __func__ << " 0x" << std::hex << pos << std::dec
                              << ":  op_jump_seq " << next_seq << dendl;
                     assert(next_seq >= log_seq);
@@ -472,8 +472,8 @@ int BlueFS::_replay(bool noop)
                 case bluefs_transaction_t::OP_ALLOC_ADD:
                 {
                     uint64_t offset, length;
-                    bl.decode_num(&offset, sizeof(offset));
-                    bl.decode_num(&length, sizeof(length));
+                    t.op_bl.decode_num(&offset, sizeof(offset));
+                    t.op_bl.decode_num(&length, sizeof(length));
                     dout(20) << __func__ << " 0x" << std::hex << pos << ":  op_alloc_add "
                              << ":0x" << offset << "~" << length << std::dec
                              << dendl;
@@ -488,8 +488,8 @@ int BlueFS::_replay(bool noop)
                 case bluefs_transaction_t::OP_ALLOC_RM:
                 {
                     uint64_t offset, length;
-                    bl.decode_num(&offset, sizeof(offset));
-                    bl.decode_num(&length, sizeof(length));
+                    t.op_bl.decode_num(&offset, sizeof(offset));
+                    t.op_bl.decode_num(&length, sizeof(length));
                     dout(20) << __func__ << " 0x" << std::hex << pos
                              << ":  op_alloc_rm :0x" << offset << "~" << length << std::dec
                              << dendl;
@@ -505,9 +505,9 @@ int BlueFS::_replay(bool noop)
                 {
                     std::string dirname, filename;
                     uint64_t ino;
-                    bl.decode_str(&dirname);
-                    bl.decode_str(&filename);
-                    bl.decode_num(&ino, sizeof(ino));
+                    t.op_bl.decode_str(&dirname);
+                    t.op_bl.decode_str(&filename);
+                    t.op_bl.decode_num(&ino, sizeof(ino));
                     dout(20) << __func__ << " 0x" << std::hex << pos << std::dec
                              << ":  op_dir_link " << dirname << "/" << filename
                              << " to " << ino
@@ -528,8 +528,8 @@ int BlueFS::_replay(bool noop)
                 case bluefs_transaction_t::OP_DIR_UNLINK:
                 {
                     std::string dirname, filename;
-                    bl.decode_str(&dirname);
-                    bl.decode_str(&filename);
+                    t.op_bl.decode_str(&dirname);
+                    t.op_bl.decode_str(&filename);
                     dout(20) << __func__ << " 0x" << std::hex << pos << std::dec
                              << ":  op_dir_unlink " << " " << dirname << "/" << filename
                              << dendl;
@@ -548,7 +548,7 @@ int BlueFS::_replay(bool noop)
                 case bluefs_transaction_t::OP_DIR_CREATE:
                 {
                     std::string dirname;
-                    bl.decode_str(&dirname);
+                    t.op_bl.decode_str(&dirname);
                     dout(20) << __func__ << " 0x" << std::hex << pos << std::dec
                              << ":  op_dir_create " << dirname << dendl;
                     if (!noop) {
@@ -562,7 +562,7 @@ int BlueFS::_replay(bool noop)
                 case bluefs_transaction_t::OP_DIR_REMOVE:
                 {
                     std::string dirname;
-                    bl.decode_str(&dirname);
+                    t.op_bl.decode_str(&dirname);
                     dout(20) << __func__ << " 0x" << std::hex << pos << std::dec
                              << ":  op_dir_remove " << dirname << dendl;
                     if (!noop) {
@@ -577,7 +577,7 @@ int BlueFS::_replay(bool noop)
                 case bluefs_transaction_t::OP_FILE_UPDATE:
                 {
                     bluefs_fnode_t fnode;
-                    fnode.decode(bl);
+                    fnode.decode(t.op_bl);
                     dout(20) << __func__ << " 0x" << std::hex << pos << std::dec
                              << ":  op_file_update " << " " << fnode << dendl;
                     if (!noop) {
@@ -593,7 +593,7 @@ int BlueFS::_replay(bool noop)
                 case bluefs_transaction_t::OP_FILE_REMOVE:
                 {
                     uint64_t ino;
-                    bl.decode_num(&ino, sizeof(ino));
+                    t.op_bl.decode_num(&ino, sizeof(ino));
                     dout(20) << __func__ << " 0x" << std::hex << pos << std::dec
                              << ":  op_file_remove " << ino << dendl;
                     if (!noop) {
