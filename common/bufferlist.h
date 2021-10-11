@@ -244,7 +244,7 @@ public:
     }
 
     bool end() {
-        if (!bl.size()) {
+        if (idx >= bl.size()) {
             return true;
         }
         if (idx == bl.size() - 1 && bl.back().len == off) {

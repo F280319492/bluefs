@@ -58,8 +58,8 @@ int64_t StableAllocator::allocate(
 void StableAllocator::release(const PExtentVector& release_set) {
     std::lock_guard<std::mutex> l(lock);
     for (auto& p_extent : release_set) {
-        assert(!p_extent.offset%stable_size);
-        assert(!p_extent.length%stable_size);
+        assert(!(p_extent.offset%stable_size));
+        assert(!(p_extent.length%stable_size));
         free_list.insert(p_extent.offset, p_extent.length);
         //TODO
         num_free += p_extent.length;
@@ -72,8 +72,8 @@ void StableAllocator::release(const interval_set<uint64_t>& release_set) {
     for (auto& p_extent : release_set) {
         off = p_extent.first;
         len = p_extent.second;
-        assert(!len % stable_size);
-        assert(!off % stable_size);
+        assert(!(len % stable_size));
+        assert(!(off % stable_size));
         free_list.insert(off, len);
         //TODO
         num_free += len;
@@ -121,8 +121,8 @@ void StableAllocator::init_add_free(uint64_t offset, uint64_t length) {
 void StableAllocator::init_rm_free(uint64_t offset, uint64_t length) {
     dout(10) << __func__ << " 0x" << std::hex << offset << "~" << length
 	   << std::dec << dendl;
-    assert(!offset % stable_size);
-    assert(!length % stable_size);
+    assert(!(offset % stable_size));
+    assert(!(length % stable_size));
     {
         std::lock_guard<std::mutex> l(lock);
         free_list.erase(offset, length);

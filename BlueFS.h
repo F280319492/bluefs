@@ -20,7 +20,6 @@ class Allocator;
 class BlueFS{
 public:
     BlueFSContext* cct;
-private:
     enum {
         WRITER_UNKNOWN,
         WRITER_WAL,

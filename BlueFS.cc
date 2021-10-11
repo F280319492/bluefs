@@ -370,7 +370,7 @@ int BlueFS::_replay(bool noop)
         uint64_t pos = log_reader->buf.pos;
         uint64_t read_pos = pos;
         bufferlist bl;
-        if (read_pos >= super.log_fnode.size) {
+        if (read_pos >= super.log_fnode.get_allocated()) {
             break;
         }
 
@@ -383,10 +383,27 @@ int BlueFS::_replay(bool noop)
         uint64_t more = 0;
         {
             uint32_t len;
+            uint64_t uuid;
+            uint64_t seq;
             bl.decode_num(&len, sizeof(len));
+            bl.decode_num(&uuid, sizeof(uuid));
+            bl.decode_num(&seq, sizeof(seq));
             if (len > bl.length()) {
                 more = ROUND_UP_TO(len - bl.length(), super.block_size);
             }
+        }
+
+        if (uuid != super.uuid) {
+            dout(10) << __func__ << " 0x" << std::hex << pos << std::dec
+                     << ": stop: uuid " << uuid << " != super.uuid " << super.uuid
+                     << dendl;
+            break;
+        }
+        if (seq != log_seq + 1) {
+            dout(10) << __func__ << " 0x" << std::hex << pos << std::dec
+                     << ": stop: seq " << seq << " != expected " << log_seq + 1
+                     << dendl;
+            break;
         }
         if (more) {
             dout(20) << __func__ << " need 0x" << std::hex << more << std::dec
@@ -611,7 +628,7 @@ int BlueFS::_replay(bool noop)
                     return -EIO;
             }
         }
-        assert(bl.end());
+        assert(t.op_bl.end());
 
         // we successfully replayed the transaction; bump the seq and log size
         ++log_seq;
