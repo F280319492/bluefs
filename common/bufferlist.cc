@@ -88,7 +88,7 @@ bool bufferlist::decode_str(std::string* str) {
     decode_num(&len, sizeof(len));
     if (len) {
         void* buf = malloc(len);
-        copy(buf, len);
+        decode(buf, len);
         str->append((char*)buf, len);
         free(buf);
     }

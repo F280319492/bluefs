@@ -71,6 +71,7 @@ std::ostream& operator<<(std::ostream& out, const bluefs_fnode_t& file) {
     for (auto& p : file.extents) {
         out << "\t" << p << std::endl;
     }
+    return out;
 }
 
 

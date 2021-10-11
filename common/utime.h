@@ -39,7 +39,7 @@ struct utime_t {
 // ostream
 inline std::ostream& operator<<(std::ostream& out, const utime_t& t)
 {
-    out << (t.tv_sec + t.tv_usec/1000000.0) << "s" << std::endl;
+    out << (t.tv_sec + t.tv_usec/1000000.0) << "s";
     return out;
 }
 

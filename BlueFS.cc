@@ -1,5 +1,6 @@
 #include <random>
 #include <exception>
+#include <time.h>
 
 #include "BlueFS.h"
 
@@ -29,7 +30,6 @@ int BlueFS::add_block_device(const std::string& path)
     dout(1) << __func__ << " path " << path
         << " size " << byte_u_t(bdev->get_size()) << dendl;
     ioc = new IOContext(cct, NULL);
-    add_block_extent(1024*1024, align_down(bdev->get_size()-1024*1024, bdev->get_block_size()));
     return 0;
 }
 
@@ -149,6 +149,7 @@ int BlueFS::mkfs()
     super.version = 1;
     super.block_size = bdev->get_block_size();
     std::independent_bits_engine<std::default_random_engine, 64, uint64_t> engine;
+    engine.seed(time(NULL));
     super.uuid = engine();
     dout(1) << __func__ << " uuid " << super.uuid << dendl;
 
@@ -381,10 +382,10 @@ int BlueFS::_replay(bool noop)
             read_pos += r;
         }
         uint64_t more = 0;
+        uint32_t len;
+        uint64_t uuid;
+        uint64_t seq;
         {
-            uint32_t len;
-            uint64_t uuid;
-            uint64_t seq;
             bl.decode_num(&len, sizeof(len));
             bl.decode_num(&uuid, sizeof(uuid));
             bl.decode_num(&seq, sizeof(seq));
