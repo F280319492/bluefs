@@ -125,6 +125,7 @@ public:
         FileRef file;
         uint64_t pos;           ///< start offset for buffer
         bufferlist buffer;      ///< new data to write (at end of file)
+        bufferlist tail_block;  ///< existing partial block at end of file, if any
         int writer_type = 0;    ///< WRITER_*
 
         std::mutex lock;
@@ -245,6 +246,7 @@ private:
     void _drop_link(FileRef f);
 
     int _allocate(uint64_t len, bluefs_fnode_t* node);
+    int _flush_range(FileWriter *h, uint64_t offset, uint64_t length);
     int _flush_all(FileWriter *h);
     int _flush(FileWriter *h, bool force);
     int _fsync(FileWriter *h, std::unique_lock<std::mutex>& l);
@@ -265,6 +267,7 @@ private:
     void flush_bdev();  // this is safe to call without a lock
 
     int _preallocate(FileRef f, uint64_t off, uint64_t len);
+    int _truncate(FileWriter *h, uint64_t off);
 
     int _read(
         FileReader *h,   ///< [in] read from here
@@ -298,7 +301,8 @@ private:
     }
 
 public:
-    BlueFS(BlueFSContext* cct) : cct(cct),
+    BlueFS()
+      : cct(new BlueFSContext()),
         bdev(nullptr),
         ioc(nullptr),
         block_total(0) {}
@@ -371,9 +375,13 @@ public:
     /// reclaim block space
     int reclaim_blocks(uint64_t want, PExtentVector *extents);
 
-    void flush(FileWriter *h) {
+    void flush(FileWriter *h, bool force = false) {
         std::lock_guard<std::mutex> l(lock);
-        _flush(h, false);
+        _flush(h, force);
+    }
+    void flush_range(FileWriter *h, uint64_t offset, uint64_t length) {
+        std::lock_guard<std::mutex> l(lock);
+        _flush_range(h, offset, length);
     }
     int fsync(FileWriter *h) {
         std::unique_lock<std::mutex> l(lock);
@@ -401,6 +409,10 @@ public:
     int preallocate(FileRef f, uint64_t offset, uint64_t len) {
         std::lock_guard<std::mutex> l(lock);
         return _preallocate(f, offset, len);
+    }
+    int truncate(FileWriter *h, uint64_t offset) {
+        std::lock_guard<std::mutex> l(lock);
+        return _truncate(h, offset);
     }
 };
 

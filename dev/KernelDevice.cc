@@ -22,8 +22,8 @@
 #include "KernelDevice.h"
 #include "common/utime.h"
 
-KernelDevice::KernelDevice(BlueFSContext* cct, aio_callback_t cb, void *cbpriv)
-  : BlockDevice(cct),
+KernelDevice::KernelDevice(BlueFSContext* c, aio_callback_t cb, void *cbpriv)
+  : BlockDevice(c),
     fd_direct(-1),
     fd_buffered(-1),
     size(0), block_size(0),
@@ -237,9 +237,9 @@ void KernelDevice::_aio_thread()
     while (!aio_stop) {
         dout(40) << __func__ << " polling" << dendl;
         int max = cct->_conf->bdev_aio_reap_max;
-        aio_t *aio[max];
+        aio_t *aio_s[max];
         int r = aio_queue.get_next_completed(cct->_conf->bdev_aio_poll_ms,
-                        aio, max);
+                                             aio_s, max);
         if (r < 0) {
             derr << __func__ << " got " << cpp_strerror(r) << dendl;
             assert(0 == "got unexpected error from io_getevents");
@@ -247,7 +247,7 @@ void KernelDevice::_aio_thread()
         if (r > 0) {
             dout(30) << __func__ << " got " << r << " completed aios" << dendl;
             for (int i = 0; i < r; ++i) {
-                IOContext *ioc = static_cast<IOContext*>(aio[i]->priv);
+                IOContext *ioc = static_cast<IOContext*>(aio_s[i]->priv);
 
                 // set flag indicating new ios have completed.  we do this *before*
                 // any completion or notifications so that any user flush() that
@@ -257,11 +257,11 @@ void KernelDevice::_aio_thread()
                 // later flush() occurs.
                 io_since_flush.store(true);
 
-                long r = aio[i]->get_return_value();
-                if (r < 0) {
-                    derr << __func__ << " got r=" << r << " (" << cpp_strerror(r) << ")"
+                long ret = aio_s[i]->get_return_value();
+                if (ret < 0) {
+                    derr << __func__ << " got r=" << ret << " (" << cpp_strerror(ret) << ")"
                     << dendl;
-                    if (ioc->allow_eio && is_expected_ioerr(r)) {
+                    if (ioc->allow_eio && is_expected_ioerr(ret)) {
                         derr << __func__ << " translating the error to EIO for upper layer"
                                 << dendl;
                         ioc->set_return_value(-EIO);
@@ -269,13 +269,13 @@ void KernelDevice::_aio_thread()
                         assert(0 == "got unexpected error from aio_t::get_return_value. "
                         "This may suggest HW issue. Please check your dmesg!");
                     }
-                } else if (aio[i]->length != (uint64_t)r) {
-                    derr << "aio to " << aio[i]->offset << "~" << aio[i]->length
-                            << " but returned: " << r << dendl;
+                } else if (aio_s[i]->length != (uint64_t)ret) {
+                    derr << "aio to " << aio_s[i]->offset << "~" << aio_s[i]->length
+                            << " but returned: " << ret << dendl;
                     assert(0 == "unexpected aio error");
                 }
 
-                dout(10) << __func__ << " finished aio " << aio[i] << " r " << r
+                dout(10) << __func__ << " finished aio " << aio_s[i] << " r " << ret
                         << " ioc " << ioc
                         << " with " << (ioc->num_running.load() - 1)
                         << " aios left" << dendl;
@@ -413,13 +413,13 @@ int KernelDevice::aio_write(
             // fast path (non-huge write)
             ioc->pending_aios.push_back(aio_t(ioc, fd_direct));
             ++ioc->num_pending;
-            auto& aio = ioc->pending_aios.back();
-            bl.prepare_iov(&aio.iov);
-            aio.bl.append(bl);
-            aio.pwritev(off, len);
-            dout(30) << aio << dendl;
+            auto& aio_s = ioc->pending_aios.back();
+            bl.prepare_iov(&aio_s.iov);
+            aio_s.bl.append(bl);
+            aio_s.pwritev(off, len);
+            dout(30) << aio_s << dendl;
             dout(5) << __func__ << " 0x" << std::hex << off << "~" << len
-                << std::dec << " aio " << &aio << dendl;
+                << std::dec << " aio " << &aio_s << dendl;
         } else {
             //TODO
             return ENOTSUP;
@@ -485,12 +485,12 @@ int KernelDevice::aio_read(
     if (aio && dio) {
         ioc->pending_aios.push_back(aio_t(ioc, fd_direct));
         ++ioc->num_pending;
-        aio_t& aio = ioc->pending_aios.back();
-        aio.pread(off, len);
-        dout(30) << aio << dendl;
-        pbl->append(aio.bl);
+        aio_t& aio_s = ioc->pending_aios.back();
+        aio_s.pread(off, len);
+        dout(30) << aio_s << dendl;
+        pbl->append(aio_s.bl);
         dout(5) << __func__ << " 0x" << std::hex << off << "~" << len
-            << std::dec << " aio " << &aio << dendl;
+            << std::dec << " aio " << &aio_s << dendl;
     } else
 #endif
     {

@@ -61,8 +61,8 @@ struct aio_queue_t {
 
     typedef std::list<aio_t>::iterator aio_iter;
 
-    explicit aio_queue_t(unsigned max_iodepth)
-        : max_iodepth(max_iodepth),
+    explicit aio_queue_t(unsigned iodepth)
+        : max_iodepth(iodepth),
         ctx(0) {
     }
     ~aio_queue_t() {

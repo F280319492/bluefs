@@ -40,9 +40,9 @@ public:
     std::atomic_int num_running = {0};
     bool allow_eio;
     Context *read_context;
-    explicit IOContext(BlueFSContext* cct, void *p, bool allow_eio = false,
-                        Context *read_context = nullptr)
-        : cct(cct), priv(p), allow_eio(allow_eio), read_context(read_context) {}
+    explicit IOContext(BlueFSContext* c, void *p, bool eio = false,
+                        Context *context = nullptr)
+        : cct(c), priv(p), allow_eio(eio), read_context(context) {}
 
     // no copying
     IOContext(const IOContext& other) = delete;
@@ -88,7 +88,7 @@ public:
     BlueFSContext* cct;
 
 public:
-    BlockDevice(BlueFSContext* cct) : cct(cct) {}
+    BlockDevice(BlueFSContext* c) : cct(c) {}
     virtual ~BlockDevice() = default;
     typedef void (*aio_callback_t)(void *handle, void *aio);
 

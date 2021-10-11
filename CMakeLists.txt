@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.0)
 project(bluefs)
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wno-unused-value")
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/")
 
 find_package(Threads REQUIRED)
 find_package(aio REQUIRED)
@@ -19,6 +19,7 @@ set(libbluefs_srcs
     dev/BlockDevice.cc
 	Allocator/Allocator.cc
 	Allocator/StableAllocator.cc
+	env/BlueRocksEnv.cc
 	bluefs_type.cc
     BlueFS.cc)
 

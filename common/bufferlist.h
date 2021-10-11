@@ -41,9 +41,9 @@ struct buffernode {
     buffernode(void* p, int l) : buf(p), len(l), cap(l), is_align(false), need_free(false) {}
     buffernode() : buf(nullptr), len(0), cap(0), is_align(false), need_free(false) {}
     buffernode(const buffernode& node) : buf(node.buf), len(node.len), cap(node.cap), is_align(node.is_align), need_free(node.need_free) {}
-    buffernode(void* p, int l, bool align, bool need_free) : buf(p), len(l), cap(l), is_align(align), need_free(need_free) {}
-    buffernode(void* p, int l, int cap, bool align) : buf(p), len(l), cap(cap), is_align(align), need_free(false) {}
-    buffernode(void* p, int l, int cap, bool align, bool need_free) : buf(p), len(l), cap(cap), is_align(align), need_free(need_free) {}
+    buffernode(void* p, int l, bool align, bool free) : buf(p), len(l), cap(l), is_align(align), need_free(free) {}
+    buffernode(void* p, int l, int c, bool align) : buf(p), len(l), cap(c), is_align(align), need_free(false) {}
+    buffernode(void* p, int l, int c, bool align, bool free) : buf(p), len(l), cap(c), is_align(align), need_free(free) {}
     buffernode operator=(const buffernode& node) {
         return buffernode(node);
     }
@@ -58,6 +58,7 @@ public:
     bufferlist &operator =(const bufferlist & other) {
         clear_free();
         this->encode_bufferlist(other);
+        return *this;
     }
     bufferlist(bufferlist &&other) {
         clear_free();
@@ -66,6 +67,7 @@ public:
     bufferlist &operator =(bufferlist &&other) {
         clear_free();
         this->encode_bufferlist(other);
+        return *this;
     }
 
     ~bufferlist() {
@@ -135,15 +137,15 @@ public:
         if (len > capacity) {
             throw std::range_error("error bufferlist len to copy");
         } else {
-            size_t off = 0;
-            size_t idx = 0;
+            size_t cur_off = 0;
+            size_t cur_idx = 0;
             while (len > 0) {
-                const buffernode& node = bl[idx];
+                const buffernode& node = bl[cur_idx];
                 size_t copy_len = std::min(len, (size_t)node.len);
-                memcpy(buf+off, (uint8_t *)node.buf, copy_len);
+                memcpy(buf+cur_off, (uint8_t *)node.buf, copy_len);
                 len -= copy_len;
-                off += copy_len;
-                idx++;
+                cur_off += copy_len;
+                cur_idx++;
             }
         }
     }
@@ -152,20 +154,19 @@ public:
         if (offset + len > capacity) {
             throw std::range_error("error bufferlist len to copy");
         } else {
-            size_t length = len;
-            size_t off = 0;
-            size_t idx = 0;
-            while (offset >= bl[idx].len) {
-                offset -= bl[idx].len;
-                idx++;
+            size_t cur_off = 0;
+            size_t cur_idx = 0;
+            while (offset >= bl[cur_idx].len) {
+                offset -= bl[cur_idx].len;
+                cur_idx++;
             }
-            while (length > 0) {
-                const buffernode& node = bl[idx];
-                size_t copy_len = std::min(length, (size_t)(node.len-offset));
-                memcpy(buf+off, (uint8_t *)node.buf+offset, copy_len);
-                length -= copy_len;
-                off += copy_len;
-                idx++;
+            while (len > 0) {
+                const buffernode& node = bl[cur_idx];
+                size_t copy_len = std::min(len, (size_t)(node.len-offset));
+                memcpy(buf+cur_off, (uint8_t *)node.buf+offset, copy_len);
+                len -= copy_len;
+                cur_off += copy_len;
+                cur_idx++;
                 offset = 0;
             }
         }
@@ -218,12 +219,12 @@ public:
             clear_free();
             bl.push_back(node);
             capacity += node.len;
-            return true;
         }
+        return true;
     }
     bool encode(const void* buf, size_t len);
     bool encode_num(const void* buf, size_t len) {
-        encode(buf, len);
+        return encode(buf, len);
     }
 
     bool encode_str(const std::string& str);
@@ -231,15 +232,15 @@ public:
 
     bool decode(void* buf, size_t len);
     bool decode_num(void* buf, size_t len) {
-        decode(buf, len);
+        return decode(buf, len);
     }
     bool decode_str(std::string* str);
     bool decode_bufferlist(bufferlist* bl);
 
-    void substr_of(const bufferlist& other, unsigned off, unsigned len) {
+    void substr_of(const bufferlist& other, unsigned offset, unsigned len) {
         size_t alloc_size = align_up(len, (uint32_t)ALLOC_SIZE);
         void* buf = aligned_malloc(alloc_size, ALLOC_SIZE);
-        other.copy(buf, len, off);
+        other.copy(buf, len, offset);
         append((char*)buf, (size_t)len, alloc_size, true, true);
     }
 
@@ -251,6 +252,13 @@ public:
             return true;
         }
         return false;
+    }
+
+    void swap(bufferlist& other) {
+        bl.swap(other.bl);
+        std::swap(capacity, other.capacity);
+        std::swap(idx, other.idx);
+        std::swap(off, other.off);
     }
 
 private:

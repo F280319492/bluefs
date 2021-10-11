@@ -2,8 +2,8 @@
 #include "StableAllocator.h"
 #include "common/bufferlist.h"
 
-StableAllocator::StableAllocator(BlueFSContext* cct, uint32_t alloc_size, const std::string& name)
-    : Allocator(name), cct(cct), stable_size(alloc_size), num_free(0), last_alloc(0)
+StableAllocator::StableAllocator(BlueFSContext* c, uint32_t alloc_size, const std::string& name)
+    : Allocator(name), cct(c), stable_size(alloc_size), num_free(0), last_alloc(0)
 {
 }
 

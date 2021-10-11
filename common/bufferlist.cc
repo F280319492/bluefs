@@ -30,12 +30,12 @@ bool bufferlist::encode(const void* buf, size_t len) {
     if (bl.empty() || bl.back().len+len > bl.back().cap) {
         size_t alloc_size = std::max(len, (size_t)ALLOC_SIZE);
         alloc_size = align_up(alloc_size, (size_t)ALLOC_SIZE);
-        void* buf = aligned_malloc(alloc_size, ALLOC_SIZE);
-        if (!buf) {
+        void* align_buf = aligned_malloc(alloc_size, ALLOC_SIZE);
+        if (!align_buf) {
             derr << __func__ << " aligned_malloc failed!" << dendl;
             return false;
         }
-        bl.push_back(buffernode(buf, 0, alloc_size, true, true));
+        bl.push_back(buffernode(align_buf, 0, alloc_size, true, true));
     }
     buffernode& node = bl.back();
 
@@ -43,6 +43,7 @@ bool bufferlist::encode(const void* buf, size_t len) {
     node.len += len;
 
     capacity += len;
+    return true;
 }
 
 bool bufferlist::encode_str(const std::string& str) {
@@ -51,17 +52,19 @@ bool bufferlist::encode_str(const std::string& str) {
     if (len) {
         encode(str.data(), len);
     }
+    return true;
 }
 
-bool bufferlist::encode_bufferlist(const bufferlist& bl) {
-    uint32_t len = bl.length();
+bool bufferlist::encode_bufferlist(const bufferlist& other_bl) {
+    uint32_t len = other_bl.length();
     encode_num(&len, sizeof(len));
     if (len) {
         void* buf = malloc(len);
-        bl.copy(buf, len);
+        other_bl.copy(buf, len);
         encode(buf, len);
         free(buf);
     }
+    return true;
 }
 
 bool bufferlist::decode(void* buf, size_t len) {
@@ -92,16 +95,19 @@ bool bufferlist::decode_str(std::string* str) {
         str->append((char*)buf, len);
         free(buf);
     }
+    return true;
 }
 
-bool bufferlist::decode_bufferlist(bufferlist* bl) {
+bool bufferlist::decode_bufferlist(bufferlist* bl_v) {
     uint32_t len;
     void* buf;
+    bool ret = true;
     decode_num(&len, sizeof(len));
     if (len) {
         size_t alloc_size = align_up(len, (uint32_t)ALLOC_SIZE);
         buf = aligned_malloc(alloc_size, ALLOC_SIZE);
-        decode(buf, len);
-        bl->append((char*)buf, (size_t)len, alloc_size, true, true);
+        ret = decode(buf, len);
+        bl_v->append((char*)buf, (size_t)len, alloc_size, true, true);
     }
+    return ret;
 }
