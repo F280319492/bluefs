@@ -281,6 +281,13 @@ private:
         uint64_t offset, ///< [in] offset
         size_t len,      ///< [in] this many bytes
         char *out);      ///< [out] optional: or copy it here
+    int _read_random(
+        FileReader *h,   ///< [in] read from here
+        uint64_t offset, ///< [in] offset
+        size_t len,      ///< [in] this many bytes
+        char *out,       ///< [out] optional: or copy it here
+        rocksdb::Slice* result,
+        rocksdb::Context* ctx);
 
     void _invalidate_cache(FileRef f, uint64_t offset, uint64_t length);
 
@@ -400,6 +407,13 @@ public:
         // h->file, and read vs write or delete is already protected (via
         // atomics and asserts).
         return _read_random(h, offset, len, out);
+    }
+    int read_random(FileReader *h, uint64_t offset, size_t len,
+                    char *out, rocksdb::Slice* result, rocksdb::Context* ctx) {
+        // no need to hold the global lock here; we only touch h and
+        // h->file, and read vs write or delete is already protected (via
+        // atomics and asserts).
+        return _read_random(h, offset, len, out, result, ctx);
     }
 
     void invalidate_cache(FileRef f, uint64_t offset, uint64_t len) {

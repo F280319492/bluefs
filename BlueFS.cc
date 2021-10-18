@@ -701,7 +701,6 @@ void BlueFS::_drop_link(FileRef file)
     }
 }
 
-
 int BlueFS::_read_random(
         FileReader *h,         ///< [in] read from here
         uint64_t off,          ///< [in] offset
@@ -743,6 +742,123 @@ int BlueFS::_read_random(
 
     dout(20) << __func__ << " got " << ret << dendl;
     --h->file->num_reading;
+    return ret;
+}
+
+struct BlueFS::C_BlueFS_OnFinish : Context {
+    BlueFS* bluefs;
+    FileReader *h;
+    char *out;
+    size_t len;
+    rocksdb::Slice* result;
+    rocksdb::Context* ctx;
+    size_t read_len;
+    std::vector<std::pair<uint64_t, uint64_t>> fs_extent;
+    std::vector<bufferlist> bl_v;
+    int ret;
+
+    C_BlueFS_OnFinish(BlueFS* bluefs_, FileReader *h_, char *out_,
+                      size_t len_, rocksdb::Slice* result_, rocksdb::Context* ctx_) :
+            bluefs(bluefs_), h(h_), out(out_), len(len_), result(result_), ctx(ctx_){
+        read_len = 0;
+        bl.clear();
+    }
+
+    void finish(int r) override {
+        if(r < 0) {
+            ret = r;
+        }
+        --h->file->num_reading;
+        assert(bl.length() == len);
+        assert(read_len == len);
+
+        uint64_t x_off = 0, t_off, t_len;
+        while (!fs_extent.empty()) {
+            t_off = fs_extent.front().first;
+            t_len = fs_extent.front().second;
+            fs_extent.erase(fs_extent.begin());
+            bufferlist& t_bl =bl_v.front();
+            t_bl.copy(out+x_off, t_len, t_off);
+            bl_v.erase(bl_v.begin());
+            x_off += t_len;
+        }
+
+        *result = rocksdb::Slice(out, read_len);
+        if(ret == 0) {
+            ctx->complete_without_del(rocksdb::Status::OK());
+        } else {
+            ctx->complete_without_del(rocksdb::Status::IOError());
+        }
+        delete this;
+    }
+};
+
+int BlueFS::_read_random(
+        FileReader *h,         ///< [in] read from here
+        uint64_t off,          ///< [in] offset
+        size_t len,            ///< [in] this many bytes
+        char *out,             ///< [out] optional: or copy it here
+        rocksdb::Slice* result,
+        rocksdb::Context* ctx)
+{
+    dout(10) << __func__ << " h " << h
+             << " 0x" << std::hex << off << "~" << len << std::dec
+             << " from " << h->file->fnode << dendl;
+
+    ++h->file->num_reading;
+
+    if (!h->ignore_eof &&
+        off + len > h->file->fnode.size) {
+        if (off > h->file->fnode.size)
+            len = 0;
+        else
+            len = h->file->fnode.size - off;
+        dout(20) << __func__ << " reaching (or past) eof, len clipped to 0x"
+                 << std::hex << len << std::dec << dendl;
+    }
+
+    int ret = 0;
+    bool has_pending_read = false;
+    C_BlueFS_OnFinish* bluefs_ctx = new C_BlueFS_OnFinish(this, h, out, len, result, ctx);
+    IOContext* ioc = new IOContext(cct, NULL, true, bluefs_ctx); // allow EIO;
+    while (len > 0) {
+        uint64_t x_off = 0;
+        auto p = h->file->fnode.seek(off, &x_off);
+        uint64_t l = std::min(p->length - x_off, len);
+        dout(20) << __func__ << " read buffered 0x"
+                 << std::hex << x_off << "~" << l << std::dec
+                 << " of " << *p << dendl;
+
+        bluefs_ctx->bl_v.push_back(bufferlist());
+        bufferlist& bl = bluefs_ctx->bl_v.back();
+        if ((p->offset + x_off) % block_size == 0 && l % block_size == 0) {
+            bluefs_ctx->fs_extent.push_back({0, l});
+            r = bdev[p->bdev]->aio_read(p->offset + x_off, l, &bl, ioc);
+        } else {
+            uint64_t aligned_off = align_down(p->offset + x_off, block_size);
+            uint64_t aligned_len = align_up(p->offset + x_off + l, block_size) - aligned_off;
+            bluefs_ctx->fs_extent.push_back({p->offset + x_off - aligned_off, l});
+            r = bdev[p->bdev]->aio_read(aligned_off, aligned_len, &bl, ioc);
+        }
+
+        assert(r == 0);
+        off += l;
+        len -= l;
+        ret += l;
+        out += l;
+    }
+
+    dout(10) << __func__ << " got " << ret << dendl;
+    if(ioc->has_pending_aios()) {
+        bluefs_ctx->read_len = ret;
+        bdev->aio_submit(ioc);
+    } else {
+        --h->file->num_reading;
+        delete bluefs_ctx;
+        delete ioc;
+        derr << __func__ << " read nothing" << dendl;
+    }
+
     return ret;
 }
 
