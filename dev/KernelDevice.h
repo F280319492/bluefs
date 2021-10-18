@@ -13,7 +13,6 @@
 #define RW_IO_MAX 0x7FFFF000
 #endif
 
-
 class KernelDevice : public BlockDevice {
     int fd_direct, fd_buffered;
     uint64_t size;

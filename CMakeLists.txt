@@ -10,6 +10,13 @@ if(HAVE_LIBAIO)
     ADD_DEFINITIONS(-DHAVE_LIBAIO)
 endif(HAVE_LIBAIO)
 
+option(WITH_SPDK "Enable SPDK" ON)
+if(WITH_SPDK)
+	include(BuildSPDK)
+	build_spdk()
+	ADD_DEFINITIONS(-DHAVE_SPDK)
+endif(WITH_SPDK)
+
 set(libbluefs_srcs
     common/aio.cc
 	common/bufferlist.cc
@@ -17,6 +24,7 @@ set(libbluefs_srcs
 	common/utime.cc
     dev/KernelDevice.cc
     dev/BlockDevice.cc
+	dev/SPDKDevice.cc
 	Allocator/Allocator.cc
 	Allocator/StableAllocator.cc
 	env/BlueRocksEnv.cc

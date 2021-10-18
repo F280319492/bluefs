@@ -761,7 +761,7 @@ struct BlueFS::C_BlueFS_OnFinish : Context {
                       size_t len_, rocksdb::Slice* result_, rocksdb::Context* ctx_) :
             bluefs(bluefs_), h(h_), out(out_), len(len_), result(result_), ctx(ctx_){
         read_len = 0;
-        bl.clear();
+        bl_v.clear();
     }
 
     void finish(int r) override {
@@ -769,7 +769,6 @@ struct BlueFS::C_BlueFS_OnFinish : Context {
             ret = r;
         }
         --h->file->num_reading;
-        assert(bl.length() == len);
         assert(read_len == len);
 
         uint64_t x_off = 0, t_off, t_len;
@@ -820,9 +819,10 @@ int BlueFS::_read_random(
     int ret = 0;
     bool has_pending_read = false;
     C_BlueFS_OnFinish* bluefs_ctx = new C_BlueFS_OnFinish(this, h, out, len, result, ctx);
-    IOContext* ioc = new IOContext(cct, NULL, true, bluefs_ctx); // allow EIO;
+    IOContext* ioc_t = new IOContext(cct, NULL, true, bluefs_ctx); // allow EIO;
     while (len > 0) {
         uint64_t x_off = 0;
+        int r;
         auto p = h->file->fnode.seek(off, &x_off);
         uint64_t l = std::min(p->length - x_off, len);
         dout(20) << __func__ << " read buffered 0x"
@@ -831,14 +831,14 @@ int BlueFS::_read_random(
 
         bluefs_ctx->bl_v.push_back(bufferlist());
         bufferlist& bl = bluefs_ctx->bl_v.back();
-        if ((p->offset + x_off) % block_size == 0 && l % block_size == 0) {
+        if ((p->offset + x_off) % super.block_size == 0 && l % super.block_size == 0) {
             bluefs_ctx->fs_extent.push_back({0, l});
-            r = bdev[p->bdev]->aio_read(p->offset + x_off, l, &bl, ioc);
+            r = bdev->aio_read(p->offset + x_off, l, &bl, ioc_t);
         } else {
-            uint64_t aligned_off = align_down(p->offset + x_off, block_size);
-            uint64_t aligned_len = align_up(p->offset + x_off + l, block_size) - aligned_off;
+            uint64_t aligned_off = align_down(p->offset + x_off, (uint64_t)super.block_size);
+            uint64_t aligned_len = align_up(p->offset + x_off + l, (uint64_t)super.block_size) - aligned_off;
             bluefs_ctx->fs_extent.push_back({p->offset + x_off - aligned_off, l});
-            r = bdev[p->bdev]->aio_read(aligned_off, aligned_len, &bl, ioc);
+            r = bdev->aio_read(aligned_off, aligned_len, &bl, ioc_t);
         }
 
         assert(r == 0);
@@ -849,13 +849,13 @@ int BlueFS::_read_random(
     }
 
     dout(10) << __func__ << " got " << ret << dendl;
-    if(ioc->has_pending_aios()) {
+    if(ioc_t->has_pending_aios()) {
         bluefs_ctx->read_len = ret;
-        bdev->aio_submit(ioc);
+        bdev->aio_submit(ioc_t);
     } else {
         --h->file->num_reading;
         delete bluefs_ctx;
-        delete ioc;
+        delete ioc_t;
         derr << __func__ << " read nothing" << dendl;
     }
 

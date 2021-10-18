@@ -15,6 +15,9 @@
 #include "boost/intrusive_ptr.hpp"
 #include "boost/algorithm/string/predicate.hpp"
 
+#include "rocksdb/Context.h"
+#include "rocksdb/status.h"
+
 class Allocator;
 
 class BlueFS{
@@ -25,6 +28,8 @@ public:
         WRITER_WAL,
         WRITER_SST,
     };
+
+    struct C_BlueFS_OnFinish;
 
     struct File {
         bluefs_fnode_t fnode;

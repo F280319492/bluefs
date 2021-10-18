@@ -20,7 +20,7 @@
 #include "BlockDevice.h"
 #include "KernelDevice.h"
 #if defined(HAVE_SPDK)
-#include "NVMEDevice.h"
+#include "SPDKDevice.h"
 #endif
 
 void IOContext::aio_wait()
@@ -56,7 +56,7 @@ BlockDevice *BlockDevice::create(BlueFSContext* cct, const std::string& path,
     }
 #if defined(HAVE_SPDK)
     if (type == "ust-nvme") {
-        return new NVMEDevice(cct, cb, cbpriv);
+        return new SPDKDevice(cct, cb, cbpriv);
     }
 #endif
 

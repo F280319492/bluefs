@@ -32,6 +32,7 @@ public:
 #ifdef HAVE_SPDK
     void *nvme_task_first = nullptr;
     void *nvme_task_last = nullptr;
+    std::atomic_int total_nseg = {0};
 #endif
 
     std::list<aio_t> pending_aios;    ///< not yet submitted
@@ -71,6 +72,17 @@ public:
             assert(num_running >= 0);
         } else {
             --num_running;
+        }
+    }
+
+    void try_aio_wake_without_sub() {
+        std::lock_guard<std::mutex> l(lock);
+        if (num_running.load() <= 0) {
+            // we might have some pending IOs submitted after the check
+            // as there is no lock protection for aio_submit.
+            // Hence we might have false conditional trigger.
+            // aio_wait has to handle that hence do not care here.
+            cond.notify_all();
         }
     }
 

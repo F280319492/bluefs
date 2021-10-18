@@ -9,7 +9,7 @@
 #include <boost/program_options.hpp>
 namespace  bpo = boost::program_options;
 
-#define PRId64  "llu"
+#define PRIud64  "llu"
 
 struct bulefs_config {
     uint32_t bdev_aio_max_queue_depth;
@@ -29,6 +29,10 @@ struct bulefs_config {
     bool bluefs_sync_write; //false
     uint64_t bluefs_min_flush_size; //524288
     uint64_t bluefs_alloc_size;
+    uint32_t bluefs_spdk_max_io_completion; //0
+    std::string bluefs_spdk_coremask; //3
+    uint32_t bluefs_spdk_mem; //512
+    int bdev_nvme_retry_count;  //-1
 };
 
 class BlueFSContext {
@@ -69,7 +73,12 @@ public:
                 ("bluefs_preextend_wal_files",      bpo::value<bool>()->default_value(false), "")
                 ("bluefs_sync_write",               bpo::value<bool>()->default_value(false), "")
                 ("bluefs_min_flush_size",           bpo::value<uint64_t>()->default_value(524288), "")
-                ("bluefs_alloc_size",               bpo::value<uint64_t>()->default_value(16777216), "");
+                ("bluefs_alloc_size",               bpo::value<uint64_t>()->default_value(16777216), "")
+                ("bluefs_spdk_max_io_completion",   bpo::value<uint32_t>()->default_value(0), "")
+                ("bluefs_spdk_coremask",            bpo::value<std::string>()->default_value("0x3"), "")
+                ("bluefs_spdk_mem",                 bpo::value<uint32_t>()->default_value(512), "")
+                ("bdev_nvme_retry_count",           bpo::value<int>()->default_value(-1), "");
+
 
         try {
             std::ifstream ifs(conf_path);
@@ -134,6 +143,18 @@ public:
         if (vm.count("bluefs_alloc_size")) {
             _conf->bluefs_alloc_size = vm["bluefs_alloc_size"].as<uint64_t>();
         }
+        if (vm.count("bluefs_spdk_max_io_completion")) {
+            _conf->bluefs_spdk_max_io_completion = vm["bluefs_spdk_max_io_completion"].as<uint32_t>();
+        }
+        if (vm.count("bluefs_spdk_coremask")) {
+            _conf->bluefs_spdk_coremask = vm["bluefs_spdk_coremask"].as<std::string>();
+        }
+        if (vm.count("bluefs_spdk_mem")) {
+            _conf->bluefs_spdk_mem = vm["bluefs_spdk_mem"].as<uint32_t>();
+        }
+        if (vm.count("bdev_nvme_retry_count")) {
+            _conf->bdev_nvme_retry_count = vm["bdev_nvme_retry_count"].as<int>();
+        }
         if (vm.empty()) {
             std::cout << "no options found \n";
         }
@@ -163,11 +184,11 @@ namespace {
         char buffer[32];
 
         if (index == 0) {
-            (void) snprintf(buffer, sizeof(buffer), "%" PRId64 "%s", (unsigned long long)n, u);
+            (void) snprintf(buffer, sizeof(buffer), "%" PRIud64 "%s", (unsigned long long)n, u);
         } else if ((v % mult) == 0) {
             // If this is an even multiple of the base, always display
             // without any decimal fraction.
-            (void) snprintf(buffer, sizeof(buffer), "%" PRId64 "%s", (unsigned long long)n, u);
+            (void) snprintf(buffer, sizeof(buffer), "%" PRIud64 "%s", (unsigned long long)n, u);
         } else {
             // We want to choose a precision that reflects the best choice
             // for fitting in 5 characters.  This can get rather tricky when
