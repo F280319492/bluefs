@@ -97,10 +97,8 @@ public:
 
     rocksdb::Status AsyncRead(uint64_t offset, size_t n, rocksdb::Slice* result,
                               char* scratch, rocksdb::Context* ctx) const override {
-        //int r = fs->read_random(h, offset, n, scratch, result, ctx);
-        int r = fs->read_random(h, offset, n, scratch);
+        int r = fs->read_random(h, offset, n, scratch, result, ctx);
         assert(r >= 0);
-        //*result = rocksdb::Slice(scratch, r);
         return rocksdb::Status::OK();
     }
     // Tries to get an unique ID for this file that will be the same each time
@@ -315,23 +313,25 @@ BlueRocksEnv::BlueRocksEnv(BlueFS *f)
         : EnvWrapper(Env::Default()),  // forward most of it to POSIX
           fs(f)
 {
-    read_thread = std::thread{ &BlueRocksEnv::_kv_read_thread, this};
-    pthread_setname_np(read_thread.native_handle(), "rocksdb_read");
+    cur_thread = 0;
+    for (int i = 0; i < thread_num; i++) {
+        read_thread[i] = std::thread{ &BlueRocksEnv::_kv_read_thread, this, i};
+        std::string name = "rocksdb_read_"+::std::to_string(i);
+        pthread_setname_np(read_thread[i].native_handle(), name.c_str());
+    }
 }
 
-void BlueRocksEnv::_kv_read_thread() {
-    std::unique_lock<std::mutex> l(read_thread_lock);
-    read_thread_start = true;
-    read_cond.notify_all();
-    //l.unlock();
-    while(!read_thread_stop) {
-        if(read_queue.empty()) {
-            //l.lock();
-            read_cond.wait(l);
+void BlueRocksEnv::_kv_read_thread(int idx) {
+    std::unique_lock<std::mutex> l(read_thread_lock[idx]);
+    read_thread_start[idx] = true;
+    read_cond[idx].notify_all();
+
+    while(!read_thread_stop[idx]) {
+        if(read_queue[idx].empty()) {
+            read_cond[idx].wait(l);
         }
         std::deque<rocksdb::Context *> read_finish;
-        //l.lock();
-        read_finish.swap(read_queue);
+        read_finish.swap(read_queue[idx]);
         l.unlock();
         for (auto ctx : read_finish) {
             ctx->complete(ctx->f_s);

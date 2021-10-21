@@ -46,7 +46,7 @@ BlockDevice *BlockDevice::create(BlueFSContext* cct, const std::string& path,
         buf[r] = '\0';
         char *bname = ::basename(buf);
         if (strncmp(bname, SPDK_PREFIX, sizeof(SPDK_PREFIX)-1) == 0)
-        type = "ust-nvme";
+            type = "ust-nvme";
     }
 
     dout(1) << __func__ << " path " << path << " type " << type << dendl;

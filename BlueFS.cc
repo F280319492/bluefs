@@ -746,6 +746,13 @@ int BlueFS::_read_random(
 }
 
 struct BlueFS::C_BlueFS_OnFinish : Context {
+    struct extent{
+        uint64_t off;
+        uint32_t len;
+        uint32_t size;
+        extent(uint64_t o, uint32_t l, uint32_t s) : off(o), len(l), size(s) {}
+    };
+
     BlueFS* bluefs;
     FileReader *h;
     char *out;
@@ -753,42 +760,39 @@ struct BlueFS::C_BlueFS_OnFinish : Context {
     rocksdb::Slice* result;
     rocksdb::Context* ctx;
     size_t read_len;
-    std::vector<std::pair<uint64_t, uint64_t>> fs_extent;
-    std::vector<bufferlist> bl_v;
-    int ret;
+    std::vector<extent> fs_extent;
+    bufferlist bl;
 
     C_BlueFS_OnFinish(BlueFS* bluefs_, FileReader *h_, char *out_,
                       size_t len_, rocksdb::Slice* result_, rocksdb::Context* ctx_) :
             bluefs(bluefs_), h(h_), out(out_), len(len_), result(result_), ctx(ctx_){
         read_len = 0;
-        bl_v.clear();
     }
 
     void finish(int r) override {
-        if(r < 0) {
-            ret = r;
-        }
         --h->file->num_reading;
         assert(read_len == len);
 
         uint64_t x_off = 0, t_off, t_len;
-        while (!fs_extent.empty()) {
-            t_off = fs_extent.front().first;
-            t_len = fs_extent.front().second;
-            fs_extent.erase(fs_extent.begin());
-            bufferlist& t_bl =bl_v.front();
-            t_bl.copy(out+x_off, t_len, t_off);
-            bl_v.erase(bl_v.begin());
+        uint64_t b_off = 0;
+        size_t extent_num = fs_extent.size();
+
+        for (size_t i = 0; i < extent_num; i++) {
+            t_off = fs_extent[i].off;
+            t_len = fs_extent[i].len;
+
+            bl.copy(out+x_off, t_len, t_off+b_off);
             x_off += t_len;
+            b_off += fs_extent[i].size;
         }
 
         *result = rocksdb::Slice(out, read_len);
-        if(ret == 0) {
+        if(r == 0) {
             ctx->complete_without_del(rocksdb::Status::OK());
         } else {
             ctx->complete_without_del(rocksdb::Status::IOError());
         }
-        delete this;
+        //delete this;
     }
 };
 
@@ -817,7 +821,6 @@ int BlueFS::_read_random(
     }
 
     int ret = 0;
-    bool has_pending_read = false;
     C_BlueFS_OnFinish* bluefs_ctx = new C_BlueFS_OnFinish(this, h, out, len, result, ctx);
     IOContext* ioc_t = new IOContext(cct, NULL, true, bluefs_ctx); // allow EIO;
     while (len > 0) {
@@ -829,16 +832,14 @@ int BlueFS::_read_random(
                  << std::hex << x_off << "~" << l << std::dec
                  << " of " << *p << dendl;
 
-        bluefs_ctx->bl_v.push_back(bufferlist());
-        bufferlist& bl = bluefs_ctx->bl_v.back();
         if ((p->offset + x_off) % super.block_size == 0 && l % super.block_size == 0) {
-            bluefs_ctx->fs_extent.push_back({0, l});
-            r = bdev->aio_read(p->offset + x_off, l, &bl, ioc_t);
+            bluefs_ctx->fs_extent.push_back(C_BlueFS_OnFinish::extent(0, l, l));
+            r = bdev->aio_read(p->offset + x_off, l, &bluefs_ctx->bl, ioc_t);
         } else {
             uint64_t aligned_off = align_down(p->offset + x_off, (uint64_t)super.block_size);
             uint64_t aligned_len = align_up(p->offset + x_off + l, (uint64_t)super.block_size) - aligned_off;
-            bluefs_ctx->fs_extent.push_back({p->offset + x_off - aligned_off, l});
-            r = bdev->aio_read(aligned_off, aligned_len, &bl, ioc_t);
+            bluefs_ctx->fs_extent.push_back(C_BlueFS_OnFinish::extent(0, l, aligned_len));
+            r = bdev->aio_read(aligned_off, aligned_len, &bluefs_ctx->bl, ioc_t);
         }
 
         assert(r == 0);

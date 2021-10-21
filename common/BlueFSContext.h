@@ -43,7 +43,7 @@ public:
     BlueFSContext &operator =(BlueFSContext &&) = delete;
     BlueFSContext() {
         _conf = new bulefs_config;
-        ParseConf("/home/conf.conf");
+        ParseConf("/home/fch/conf.conf");
     }
     ~BlueFSContext() {
         if (_conf) {
@@ -75,7 +75,7 @@ public:
                 ("bluefs_min_flush_size",           bpo::value<uint64_t>()->default_value(524288), "")
                 ("bluefs_alloc_size",               bpo::value<uint64_t>()->default_value(16777216), "")
                 ("bluefs_spdk_max_io_completion",   bpo::value<uint32_t>()->default_value(0), "")
-                ("bluefs_spdk_coremask",            bpo::value<std::string>()->default_value("0x3"), "")
+                ("bluefs_spdk_coremask",            bpo::value<std::string>()->default_value("0x1"), "")
                 ("bluefs_spdk_mem",                 bpo::value<uint32_t>()->default_value(512), "")
                 ("bdev_nvme_retry_count",           bpo::value<int>()->default_value(-1), "");
 

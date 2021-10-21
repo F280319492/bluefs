@@ -287,6 +287,15 @@ void KernelDevice::_aio_thread()
                     if (--ioc->num_running == 0) {
                         aio_callback(aio_callback_priv, ioc->priv);
                     }
+                } else if (ioc->read_context) {
+                    if (--ioc->num_running == 0) {
+                        ioc->read_context->complete_without_del(ioc->get_return_value());
+                        if(ioc) {
+                            delete ioc;
+                        } else {
+                            dout(10) << __func__ << " ioc is null" << dendl;
+                        }
+                    }
                 } else {
                     ioc->try_aio_wake();
                 }
