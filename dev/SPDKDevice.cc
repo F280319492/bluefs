@@ -521,10 +521,6 @@ int SPDKManager::try_get(const spdk_nvme_transport_id& trid, SharedDriverData **
                     spdk_env_init(&opts);
                     spdk_unaffinitize_thread();
 
-                    spdk_nvme_retry_count = g_context->_conf->bdev_nvme_retry_count;
-                    if (spdk_nvme_retry_count < 0)
-                        spdk_nvme_retry_count = SPDK_NVME_DEFAULT_RETRY_COUNT;
-
                     std::unique_lock<std::mutex> l1(probe_queue_lock);
                     while (!stopping) {
                         if (!probe_queue.empty()) {
