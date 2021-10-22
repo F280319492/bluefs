@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <algorithm>
 #include <assert.h>
+#include <execinfo.h>
 
 #include "debug.h"
 
@@ -16,6 +17,8 @@
 void* aligned_malloc(size_t required_bytes, size_t alignment);
 
 void aligned_free(void *p2);
+
+void print_backtrace();
 
 template <typename T>
 inline constexpr T align_up(T v, T align) {
@@ -57,16 +60,52 @@ public:
     bufferlist() : capacity(0), idx(0), off(0) {}
     bufferlist &operator =(const bufferlist & other) {
         clear_free();
-        this->encode_bufferlist(other);
+        size_t len = other.length();
+        if (len) {
+            size_t alloc_size = std::max(len, (size_t)ALLOC_SIZE);
+            alloc_size = align_up(alloc_size, (size_t)ALLOC_SIZE);
+            void* align_buf = aligned_malloc(alloc_size, ALLOC_SIZE);
+            if (!align_buf) {
+                derr << __func__ << " aligned_malloc failed!" << dendl;
+                return *this;
+            }
+            other.copy(align_buf, len);
+            bl.push_back(buffernode(align_buf, len, alloc_size, true, true));
+        }
+        capacity = len;
         return *this;
     }
     bufferlist(bufferlist &&other) {
         clear_free();
-        this->encode_bufferlist(other);
+        size_t len = other.length();
+        if (len) {
+            size_t alloc_size = std::max(len, (size_t)ALLOC_SIZE);
+            alloc_size = align_up(alloc_size, (size_t)ALLOC_SIZE);
+            void* align_buf = aligned_malloc(alloc_size, ALLOC_SIZE);
+            if (!align_buf) {
+                derr << __func__ << " aligned_malloc failed!" << dendl;
+                return;
+            }
+            other.copy(align_buf, len);
+            bl.push_back(buffernode(align_buf, len, alloc_size, true, true));
+        }
+        capacity = len;
     }
-    bufferlist &operator =(bufferlist &&other) {
+    bufferlist &operator=(bufferlist &&other) {
         clear_free();
-        this->encode_bufferlist(other);
+        size_t len = other.length();
+        if (len) {
+            size_t alloc_size = std::max(len, (size_t)ALLOC_SIZE);
+            alloc_size = align_up(alloc_size, (size_t)ALLOC_SIZE);
+            void* align_buf = aligned_malloc(alloc_size, ALLOC_SIZE);
+            if (!align_buf) {
+                derr << __func__ << " aligned_malloc failed!" << dendl;
+                return *this;
+            }
+            other.copy(align_buf, len);
+            bl.push_back(buffernode(align_buf, len, alloc_size, true, true));
+        }
+        capacity = len;
         return *this;
     }
 

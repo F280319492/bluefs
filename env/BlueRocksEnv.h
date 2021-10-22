@@ -148,9 +148,11 @@ public:
     rocksdb::Status GetTestDirectory(std::string* path) override;
 
     void ScheduleAayncRead(rocksdb::Context* ctx) override {
-        std::lock_guard<std::mutex> l(read_thread_lock);
-        read_queue.push_back(ctx);
-        read_cond.notify_one();
+        int idx = cur_thread;
+        cur_thread = (cur_thread + 1) % thread_num;
+        std::lock_guard<std::mutex> l(read_thread_lock[idx]);
+        read_queue[idx].push_back(ctx);
+        read_cond[idx].notify_one();
     }
 
     // Create and return a log file for storing informational messages.
@@ -166,28 +168,32 @@ public:
         return fs;
     }
 
-    void _kv_read_thread();
+    void _kv_read_thread(int idx);
 
     explicit BlueRocksEnv(BlueFS *f);
     ~BlueRocksEnv() {
-        {
-            std::unique_lock<std::mutex> l(read_thread_lock);
-            while (!read_thread_start) {
-                read_cond.wait(l);
+        for (int i = 0; i < thread_num; i++) {
+            {
+                std::unique_lock<std::mutex> l(read_thread_lock[i]);
+                while (!read_thread_start[i]) {
+                    read_cond[i].wait(l);
+                }
+                read_thread_stop[i] = true;
+                read_cond[i].notify_all();
             }
-            read_thread_stop = true;
-            read_cond.notify_all();
+            read_thread[i].join();
         }
-        read_thread.join();
     }
 private:
     BlueFS *fs;
-    std::thread read_thread;
-    bool read_thread_stop = false;
-    bool read_thread_start = false;
-    std::mutex read_thread_lock;
-    std::condition_variable read_cond;
-    std::deque<rocksdb::Context*> read_queue;
+    static const int thread_num = 3;
+    int cur_thread;
+    std::thread read_thread[thread_num];
+    bool read_thread_stop[thread_num] = {false};
+    bool read_thread_start[thread_num] = {false};
+    std::mutex read_thread_lock[thread_num];
+    std::condition_variable read_cond[thread_num];
+    std::deque<rocksdb::Context*> read_queue[thread_num];
 };
 
 class BlueFSRocksdbLogger : public rocksdb::Logger {

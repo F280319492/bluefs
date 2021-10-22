@@ -641,15 +641,8 @@ int SPDKDevice::open(const std::string& p)
 {
     dout(1) << __func__ << " path " << p << dendl;
 
-    std::ifstream ifs(p);
-    if (!ifs) {
-        derr << __func__ << " unable to open " << p << dendl;
-        return -1;
-    }
-    std::string val;
-    std::getline(ifs, val);
     spdk_nvme_transport_id trid;
-    int r = spdk_nvme_transport_id_parse(&trid, val.c_str());
+    int r = spdk_nvme_transport_id_parse(&trid, p.c_str());
     if (r) {
         derr << __func__ << " unable to read " << p << ": " << cpp_strerror(r)
              << dendl;

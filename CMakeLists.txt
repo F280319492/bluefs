@@ -13,10 +13,6 @@ find_package(Boost COMPONENTS program_options REQUIRED)
 
 option(WITH_SPDK "Enable SPDK" ON)
 if(WITH_SPDK)
-    include_directories(
-        ${CMAKE_CURRENT_SOURCE_DIR}/spdk/dpdk/build/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/spdk/include
-    )
     ADD_DEFINITIONS(-DHAVE_SPDK)
 endif(WITH_SPDK)
 
