@@ -750,7 +750,8 @@ struct BlueFS::C_BlueFS_OnFinish : Context {
         uint64_t off;
         uint32_t len;
         uint32_t size;
-        extent(uint64_t o, uint32_t l, uint32_t s) : off(o), len(l), size(s) {}
+        bool     zero_copy;
+        extent(uint64_t o, uint32_t l, uint32_t s, bool z) : off(o), len(l), size(s), zero_copy(z) {}
     };
 
     BlueFS* bluefs;
@@ -780,8 +781,9 @@ struct BlueFS::C_BlueFS_OnFinish : Context {
         for (size_t i = 0; i < extent_num; i++) {
             t_off = fs_extent[i].off;
             t_len = fs_extent[i].len;
-
-            bl.copy(out+x_off, t_len, t_off+b_off);
+            if (!fs_extent[i].zero_copy) {
+                bl.copy(out+x_off, t_len, t_off+b_off);
+            }
             x_off += t_len;
             b_off += fs_extent[i].size;
         }
@@ -833,12 +835,12 @@ int BlueFS::_read_random(
                  << " of " << *p << dendl;
 
         if ((p->offset + x_off) % super.block_size == 0 && l % super.block_size == 0) {
-            bluefs_ctx->fs_extent.push_back(C_BlueFS_OnFinish::extent(0, l, l));
-            r = bdev->aio_read(p->offset + x_off, l, &bluefs_ctx->bl, ioc_t);
+            bluefs_ctx->fs_extent.push_back(C_BlueFS_OnFinish::extent(0, l, l, true));
+            r = bdev->aio_read(p->offset + x_off, l, out, &bluefs_ctx->bl, ioc_t);
         } else {
             uint64_t aligned_off = align_down(p->offset + x_off, (uint64_t)super.block_size);
             uint64_t aligned_len = align_up(p->offset + x_off + l, (uint64_t)super.block_size) - aligned_off;
-            bluefs_ctx->fs_extent.push_back(C_BlueFS_OnFinish::extent(0, l, aligned_len));
+            bluefs_ctx->fs_extent.push_back(C_BlueFS_OnFinish::extent(0, l, aligned_len, false));
             r = bdev->aio_read(aligned_off, aligned_len, &bluefs_ctx->bl, ioc_t);
         }
 

@@ -509,6 +509,36 @@ int KernelDevice::aio_read(
     return r;
 }
 
+int KernelDevice::aio_read(
+        uint64_t off,
+        uint64_t len,
+        char *buf,
+        bufferlist *pbl,
+        IOContext *ioc)
+{
+    dout(5) << __func__ << " 0x" << std::hex << off << "~" << len << std::dec
+            << dendl;
+
+    int r = 0;
+#ifdef HAVE_LIBAIO
+    if (aio && dio) {
+        ioc->pending_aios.push_back(aio_t(ioc, fd_direct));
+        ++ioc->num_pending;
+        aio_t& aio_s = ioc->pending_aios.back();
+        aio_s.pread(off, len, buf);
+        dout(30) << aio_s << dendl;
+        pbl->append(aio_s.bl);
+        dout(5) << __func__ << " 0x" << std::hex << off << "~" << len
+            << std::dec << " aio " << &aio_s << dendl;
+    } else
+#endif
+    {
+        r = read(off, len, pbl, ioc, false);
+    }
+
+    return r;
+}
+
 int KernelDevice::direct_read_unaligned(uint64_t off, uint64_t len, char *buf)
 {
     int r = 0;

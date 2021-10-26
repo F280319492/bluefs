@@ -894,6 +894,39 @@ int SPDKDevice::aio_read(
     return 0;
 }
 
+int SPDKDevice::aio_read(
+        uint64_t off,
+        uint64_t len,
+        char *buf,
+        bufferlist *pbl,
+        IOContext *ioc)
+{
+    dout(20) << __func__ << " " << off << "~" << len << " ioc " << ioc << dendl;
+    if(!is_valid_io(off, len)) {
+        dout(0) << __func__ << " " << off << "~" << len << " ioc " << ioc << dendl;
+    }
+    assert(is_valid_io(off, len));
+
+    Task *t = new Task(this, IOCommand::READ_COMMAND, off, len);
+    assert((uint64_t)buf % block_size == 0);
+    pbl->append(buf, len, true, false);
+    t->ctx = ioc;
+    t->fill_cb = [buf, t]() {
+        t->copy_to_buf(buf, 0, t->len);
+    };
+
+    Task *first = static_cast<Task*>(ioc->nvme_task_first);
+    Task *last = static_cast<Task*>(ioc->nvme_task_last);
+    if (last)
+        last->next = t;
+    if (!first)
+        ioc->nvme_task_first = t;
+    ioc->nvme_task_last = t;
+    ++ioc->num_pending;
+
+    return 0;
+}
+
 int SPDKDevice::read_random(uint64_t off, uint64_t len, char *buf, bool buffered)
 {
     assert(len > 0);

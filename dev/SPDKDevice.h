@@ -73,6 +73,12 @@ public:
             uint64_t len,
             bufferlist *pbl,
             IOContext *ioc) override;
+    int aio_read(
+            uint64_t off,
+            uint64_t len,
+            char *buf,
+            bufferlist *pbl,
+            IOContext *ioc) override;
     int aio_write(uint64_t off, bufferlist& bl,
                   IOContext *ioc,
                   bool buffered) override;
