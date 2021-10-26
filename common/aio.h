@@ -29,6 +29,7 @@ struct aio_t {
         length = len;
         io_prep_pwritev(&iocb, fd, &iov[0], iov.size(), offset);
     }
+
     void pread(uint64_t _offset, uint64_t len) {
         offset = _offset;
         length = len;
@@ -39,6 +40,20 @@ struct aio_t {
         }
         io_prep_pread(&iocb, fd, p, length, offset);
         bl.append(p, len, true, true);
+    }
+
+    void pread(uint64_t _offset, uint64_t len, char* buf) {
+        offset = _offset;
+        length = len;
+
+        assert((uint64_t)buf % (uint64_t)4096 == 0);
+        char* p = buf;
+        if (!p) {
+            derr << __func__ << " aligned_malloc failed!" << dendl;
+            return;
+        }
+        io_prep_pread(&iocb, fd, p, length, offset);
+        bl.append(p, len, true, false);
     }
 
     long get_return_value() {
