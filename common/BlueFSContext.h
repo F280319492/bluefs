@@ -157,7 +157,7 @@ public:
             _conf->bdev_nvme_retry_count = vm["bdev_nvme_retry_count"].as<int>();
         }
         if (vm.count("thread_per_dev")) {
-            _conf->bdev_nvme_retry_count = vm["thread_per_dev"].as<int>();
+            _conf->thread_per_dev = vm["thread_per_dev"].as<int>();
         }
         if (vm.empty()) {
             std::cout << "no options found \n";
