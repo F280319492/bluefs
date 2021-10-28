@@ -14,6 +14,10 @@
 #define RW_IO_MAX 0x7FFFF000
 #endif
 
+#ifndef MAX_DEV_THREAD
+#define MAX_DEV_THREAD 5
+#endif
+
 class KernelDevice : public BlockDevice {
 
     uint64_t size;
@@ -31,7 +35,7 @@ class KernelDevice : public BlockDevice {
     aio_callback_t aio_callback;
     void *aio_callback_priv;
     std::vector<bool> aio_stops;
-    std::vector<std::thread> aio_threads;
+    std::thread aio_threads[MAX_DEV_THREAD];
 
     void _aio_thread(int idx);
     int _aio_start();

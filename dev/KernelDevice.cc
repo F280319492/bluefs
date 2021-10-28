@@ -32,12 +32,15 @@ KernelDevice::KernelDevice(BlueFSContext* c, aio_callback_t cb, void *cbpriv)
     aio_callback(cb),
     aio_callback_priv(cbpriv)
 {
+    if (thread_num > MAX_DEV_THREAD) {
+        thread_num = MAX_DEV_THREAD;
+    }
+
     cur_thread = 0;
     fd_directs.reserve(thread_num);
     fd_buffereds.reserve(thread_num);
     aio_queues.reserve(thread_num);
     aio_stops.reserve(thread_num);
-    aio_threads.reserve(thread_num);
     for (int i = 0; i < thread_num; i++) {
         fd_directs[i] = -1;
         fd_buffereds[i] = -1;
