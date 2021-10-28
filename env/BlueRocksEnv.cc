@@ -4,6 +4,8 @@
 #include "BlueRocksEnv.h"
 #include "BlueFS.h"
 
+thread_local int cur_thread = 0;
+
 rocksdb::Status err_to_status(int r)
 {
     switch (r) {
@@ -553,6 +555,14 @@ rocksdb::Status BlueRocksEnv::GetAbsolutePath(
     // this is a lie...
     *output_path = "/" + db_path;
     return rocksdb::Status::OK();
+}
+
+void BlueRocksEnv::ScheduleAayncRead(rocksdb::Context* ctx) {
+    int idx = cur_thread;
+    cur_thread = (cur_thread + 1) % thread_num;
+    std::lock_guard<std::mutex> l(read_thread_lock[idx]);
+    read_queue[idx].push_back(ctx);
+    read_cond[idx].notify_one();
 }
 
 rocksdb::Status BlueRocksEnv::NewLogger(

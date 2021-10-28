@@ -147,13 +147,7 @@ public:
     // same directory.
     rocksdb::Status GetTestDirectory(std::string* path) override;
 
-    void ScheduleAayncRead(rocksdb::Context* ctx) override {
-        int idx = cur_thread;
-        cur_thread = (cur_thread + 1) % thread_num;
-        std::lock_guard<std::mutex> l(read_thread_lock[idx]);
-        read_queue[idx].push_back(ctx);
-        read_cond[idx].notify_one();
-    }
+    void ScheduleAayncRead(rocksdb::Context* ctx) override;
 
     // Create and return a log file for storing informational messages.
     rocksdb::Status NewLogger(
@@ -187,7 +181,6 @@ public:
 private:
     BlueFS *fs;
     static const int thread_num = 3;
-    thread_local int cur_thread = 0;
     std::thread read_thread[thread_num];
     bool read_thread_stop[thread_num] = {false};
     bool read_thread_start[thread_num] = {false};

@@ -22,6 +22,8 @@
 #include "KernelDevice.h"
 #include "common/utime.h"
 
+static thread_local int cur_thread = 0;
+
 KernelDevice::KernelDevice(BlueFSContext* c, aio_callback_t cb, void *cbpriv)
   : BlockDevice(c),
     size(0), block_size(0),
@@ -32,13 +34,13 @@ KernelDevice::KernelDevice(BlueFSContext* c, aio_callback_t cb, void *cbpriv)
 {
     cur_thread = 0;
     fd_directs.reserve(thread_num);
-    fd_buffered.reserve(thread_num);
+    fd_buffereds.reserve(thread_num);
     aio_queues.reserve(thread_num);
     aio_stops.reserve(thread_num);
     aio_threads.reserve(thread_num);
     for (int i = 0; i < thread_num; i++) {
         fd_directs[i] = -1;
-        fd_buffered[i] = -1;
+        fd_buffereds[i] = -1;
         aio_queues[i] = aio_queue_t(cct->_conf->bdev_aio_max_queue_depth);
         aio_stops[i] = false;
     }
@@ -120,7 +122,7 @@ int KernelDevice::open(const std::string& p)
 
     if (S_ISBLK(st.st_mode)) {
         int64_t s;
-        r = get_block_device_size(fd_direct, &s);
+        r = get_block_device_size(fd_directs[0], &s);
         if (r < 0) {
             goto out_fail;
         }
@@ -165,7 +167,7 @@ void KernelDevice::close()
     _aio_stop();
 
     for (int i = 0; i < thread_num; i++) {
-        assert(fd_direct[i] >= 0);
+        assert(fd_directs[i] >= 0);
         ::close(fd_directs[i]);
         fd_directs[i] = -1;
     }
@@ -525,7 +527,7 @@ int KernelDevice::aio_read(
 #ifdef HAVE_LIBAIO
     if (aio && dio) {
         if (ioc->thread_idx == -1) {
-            int ioc->thread_idx = cur_thread;
+            ioc->thread_idx = cur_thread;
             cur_thread = (cur_thread + 1) % thread_num;
         }
         ioc->pending_aios.push_back(aio_t(ioc, fd_directs[ioc->thread_idx]));
@@ -559,7 +561,7 @@ int KernelDevice::aio_read(
 #ifdef HAVE_LIBAIO
     if (aio && dio) {
         if (ioc->thread_idx == -1) {
-            int ioc->thread_idx = cur_thread;
+            ioc->thread_idx = cur_thread;
             cur_thread = (cur_thread + 1) % thread_num;
         }
         ioc->pending_aios.push_back(aio_t(ioc, fd_directs[ioc->thread_idx]));

@@ -25,7 +25,6 @@ class KernelDevice : public BlockDevice {
     std::mutex flush_mutex;
 
     int thread_num;
-    thread_local int cur_thread = 0;
     std::vector<int> fd_directs;
     std::vector<int> fd_buffereds;
     std::vector<aio_queue_t> aio_queues;
