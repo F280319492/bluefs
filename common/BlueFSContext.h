@@ -34,7 +34,6 @@ struct bulefs_config {
     uint32_t bluefs_spdk_mem; //512
     int bdev_nvme_retry_count;  //-1
     int thread_per_dev;  //2
-    int env_thread_per_dev_thread; //3
 };
 
 class BlueFSContext {
@@ -79,8 +78,8 @@ public:
                 ("bluefs_spdk_max_io_completion",   bpo::value<uint32_t>()->default_value(0), "")
                 ("bluefs_spdk_coremask",            bpo::value<std::string>()->default_value("0x1"), "")
                 ("bluefs_spdk_mem",                 bpo::value<uint32_t>()->default_value(512), "")
-                ("bdev_nvme_retry_count",           bpo::value<int>()->default_value(-1), "");
-
+                ("bdev_nvme_retry_count",           bpo::value<int>()->default_value(-1), "")
+                ("thread_per_dev",                  bpo::value<int>()->default_value(2), "");
 
         try {
             std::ifstream ifs(conf_path);
@@ -156,6 +155,9 @@ public:
         }
         if (vm.count("bdev_nvme_retry_count")) {
             _conf->bdev_nvme_retry_count = vm["bdev_nvme_retry_count"].as<int>();
+        }
+        if (vm.count("thread_per_dev")) {
+            _conf->bdev_nvme_retry_count = vm["thread_per_dev"].as<int>();
         }
         if (vm.empty()) {
             std::cout << "no options found \n";
