@@ -63,7 +63,7 @@ public:
         return block_size;
     }
 
-    void aio_submit(IOContext *ioc) override;
+    void aio_submit(IOContext *ioc, bool fixed_thread = true) override;
 
     int read(uint64_t off, uint64_t len, bufferlist *pbl,
              IOContext *ioc,

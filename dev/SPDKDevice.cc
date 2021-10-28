@@ -742,7 +742,7 @@ int SPDKDevice::flush()
     return 0;
 }
 
-void SPDKDevice::aio_submit(IOContext *ioc)
+void SPDKDevice::aio_submit(IOContext *ioc, bool fixed_thread)
 {
     dout(20) << __func__ << " ioc " << ioc << " pending "
              << ioc->num_pending.load() << " running "

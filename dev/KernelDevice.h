@@ -8,13 +8,18 @@
 #include "common/BlueFSContext.h"
 #include <thread>
 #include <pthread.h>
+#include <vector>
 
 #ifndef RW_IO_MAX
 #define RW_IO_MAX 0x7FFFF000
 #endif
 
+#ifndef MAX_DEV_THREAD
+#define MAX_DEV_THREAD 5
+#endif
+
 class KernelDevice : public BlockDevice {
-    int fd_direct, fd_buffered;
+
     uint64_t size;
     uint64_t block_size;
     std::string path;
@@ -23,13 +28,16 @@ class KernelDevice : public BlockDevice {
     std::atomic<bool> io_since_flush = {false};
     std::mutex flush_mutex;
 
-    aio_queue_t aio_queue;
+    int thread_num;
+    std::vector<int> fd_directs;
+    std::vector<int> fd_buffereds;
+    std::vector<aio_queue_t> aio_queues;
     aio_callback_t aio_callback;
     void *aio_callback_priv;
-    bool aio_stop;
-    std::thread aio_thread;
+    std::vector<bool> aio_stops;
+    std::thread aio_threads[MAX_DEV_THREAD];
 
-    void _aio_thread();
+    void _aio_thread(int idx);
     int _aio_start();
     void _aio_stop();
 
@@ -42,7 +50,7 @@ class KernelDevice : public BlockDevice {
 public:
     KernelDevice(BlueFSContext* cct, aio_callback_t cb, void *cbpriv);
 
-    void aio_submit(IOContext *ioc) override;
+    void aio_submit(IOContext *ioc, bool fixed_thread = true) override;
 
     uint64_t get_size() const override {
         return size;
