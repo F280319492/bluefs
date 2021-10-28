@@ -41,9 +41,10 @@ public:
     std::atomic_int num_running = {0};
     bool allow_eio;
     Context *read_context;
+    int thread_idx;
     explicit IOContext(BlueFSContext* c, void *p, bool eio = false,
                         Context *context = nullptr)
-        : cct(c), priv(p), allow_eio(eio), read_context(context) {}
+        : cct(c), priv(p), allow_eio(eio), read_context(context), thread_idx(-1) {}
 
     // no copying
     IOContext(const IOContext& other) = delete;
@@ -106,7 +107,7 @@ public:
 
     static BlockDevice *create(BlueFSContext* cct, const std::string& path, aio_callback_t cb, void *cbpriv);
 
-    virtual void aio_submit(IOContext *ioc) = 0;
+    virtual void aio_submit(IOContext *ioc, bool fixed_thread = true) = 0;
 
     virtual uint64_t get_size() const = 0;
     virtual uint64_t get_block_size() const = 0;

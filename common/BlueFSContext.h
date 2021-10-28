@@ -33,6 +33,8 @@ struct bulefs_config {
     std::string bluefs_spdk_coremask; //3
     uint32_t bluefs_spdk_mem; //512
     int bdev_nvme_retry_count;  //-1
+    int thread_per_dev;  //2
+    int env_thread_per_dev_thread; //3
 };
 
 class BlueFSContext {

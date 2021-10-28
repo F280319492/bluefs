@@ -187,7 +187,7 @@ public:
 private:
     BlueFS *fs;
     static const int thread_num = 3;
-    int cur_thread;
+    thread_local int cur_thread = 0;
     std::thread read_thread[thread_num];
     bool read_thread_stop[thread_num] = {false};
     bool read_thread_start[thread_num] = {false};

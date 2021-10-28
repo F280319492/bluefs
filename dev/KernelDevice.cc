@@ -24,15 +24,24 @@
 
 KernelDevice::KernelDevice(BlueFSContext* c, aio_callback_t cb, void *cbpriv)
   : BlockDevice(c),
-    fd_direct(-1),
-    fd_buffered(-1),
     size(0), block_size(0),
     aio(false), dio(false),
-    aio_queue(cct->_conf->bdev_aio_max_queue_depth),
+    thread_num(c->_conf->thread_per_dev),
     aio_callback(cb),
-    aio_callback_priv(cbpriv),
-    aio_stop(false)
+    aio_callback_priv(cbpriv)
 {
+    cur_thread = 0;
+    fd_directs.reserve(thread_num);
+    fd_buffered.reserve(thread_num);
+    aio_queues.reserve(thread_num);
+    aio_stops.reserve(thread_num);
+    aio_threads.reserve(thread_num);
+    for (int i = 0; i < thread_num; i++) {
+        fd_directs[i] = -1;
+        fd_buffered[i] = -1;
+        aio_queues[i] = aio_queue_t(cct->_conf->bdev_aio_max_queue_depth);
+        aio_stops[i] = false;
+    }
 }
 
 int KernelDevice::_lock()
@@ -41,7 +50,7 @@ int KernelDevice::_lock()
     memset(&l, 0, sizeof(l));
     l.l_type = F_WRLCK;
     l.l_whence = SEEK_SET;
-    int r = ::fcntl(fd_direct, F_SETLK, &l);
+    int r = ::fcntl(fd_directs[0], F_SETLK, &l);
     if (r < 0)
         return -errno;
     return 0;
@@ -53,18 +62,21 @@ int KernelDevice::open(const std::string& p)
     int r = 0;
     dout(1) << __func__ << " path " << path << dendl;
 
-    fd_direct = ::open(path.c_str(), O_RDWR | O_DIRECT | O_CLOEXEC);
-    if (fd_direct < 0) {
-        r = -errno;
-        derr << __func__ << " open got: " << cpp_strerror(r) << dendl;
-        return r;
+    for (int i = 0; i < thread_num; i++) {
+        fd_directs[i] = ::open(path.c_str(), O_RDWR | O_DIRECT | O_CLOEXEC);
+        if (fd_directs[i] < 0) {
+            r = -errno;
+            derr << __func__ << " open got: " << cpp_strerror(r) << dendl;
+            return r;
+        }
+        fd_buffereds[i] = ::open(path.c_str(), O_RDWR | O_CLOEXEC);
+        if (fd_buffereds[i] < 0) {
+            r = -errno;
+            derr << __func__ << " open got: " << cpp_strerror(r) << dendl;
+            goto out_direct;
+        }
     }
-    fd_buffered = ::open(path.c_str(), O_RDWR | O_CLOEXEC);
-    if (fd_buffered < 0) {
-        r = -errno;
-        derr << __func__ << " open got: " << cpp_strerror(r) << dendl;
-        goto out_direct;
-    }
+
     dio = true;
     aio = cct->_conf->bdev_aio;
     if (!aio) {
@@ -73,7 +85,7 @@ int KernelDevice::open(const std::string& p)
 
     // disable readahead as it will wreak havoc on our mix of
     // directio/aio and buffered io.
-    r = posix_fadvise(fd_buffered, 0, 0, POSIX_FADV_RANDOM);
+    r = posix_fadvise(fd_buffereds[0], 0, 0, POSIX_FADV_RANDOM);
     if (r) {
         r = -r;
         derr << __func__ << " open got: " << cpp_strerror(r) << dendl;
@@ -88,7 +100,7 @@ int KernelDevice::open(const std::string& p)
     }
 
     struct stat st;
-    r = ::fstat(fd_direct, &st);
+    r = ::fstat(fd_directs[0], &st);
     if (r < 0) {
         r = -errno;
         derr << __func__ << " fstat got " << cpp_strerror(r) << dendl;
@@ -135,11 +147,15 @@ int KernelDevice::open(const std::string& p)
     return 0;
 
 out_fail:
-    ::close(fd_buffered);
-    fd_buffered = -1;
+    for (int i = 0; i < thread_num; i++) {
+        ::close(fd_buffereds[i]);
+        fd_buffereds[i] = -1;
+    }
 out_direct:
-    ::close(fd_direct);
-    fd_direct = -1;
+    for (int i = 0; i < thread_num; i++) {
+        ::close(fd_directs[i]);
+        fd_directs[i] = -1;
+    }
     return r;
 }
 
@@ -148,13 +164,17 @@ void KernelDevice::close()
     dout(1) << __func__ << dendl;
     _aio_stop();
 
-    assert(fd_direct >= 0);
-    ::close(fd_direct);
-    fd_direct = -1;
+    for (int i = 0; i < thread_num; i++) {
+        assert(fd_direct[i] >= 0);
+        ::close(fd_directs[i]);
+        fd_directs[i] = -1;
+    }
 
-    assert(fd_buffered >= 0);
-    ::close(fd_buffered);
-    fd_buffered = -1;
+    for (int i = 0; i < thread_num; i++) {
+        assert(fd_buffereds[i] >= 0);
+        ::close(fd_buffereds[i]);
+        fd_buffereds[i] = -1;
+    }
 
     path.clear();
 }
@@ -180,7 +200,7 @@ int KernelDevice::flush()
 
     dout(10) << __func__ << " start" << dendl;
     utime_t start = clock_now();
-    int r = ::fdatasync(fd_direct);
+    int r = ::fdatasync(fd_directs[0]);
     utime_t end = clock_now();
     utime_t dur = end - start;
     if (r < 0) {
@@ -196,18 +216,21 @@ int KernelDevice::_aio_start()
 {
     if (aio) {
         dout(10) << __func__ << dendl;
-        int r = aio_queue.init();
-        if (r < 0) {
-            if (r == -EAGAIN) {
-                derr << __func__ << " io_setup(2) failed with EAGAIN; "
-                    << "try increasing /proc/sys/fs/aio-max-nr" << dendl;
-            } else {
-                derr << __func__ << " io_setup(2) failed: " << cpp_strerror(r) << dendl;
+        for (int i = 0; i < thread_num; i++) {
+            int r = aio_queues[i].init();
+            if (r < 0) {
+                if (r == -EAGAIN) {
+                    derr << __func__ << " io_setup(2) failed with EAGAIN; "
+                         << "try increasing /proc/sys/fs/aio-max-nr" << dendl;
+                } else {
+                    derr << __func__ << " io_setup(2) failed: " << cpp_strerror(r) << dendl;
+                }
+                return r;
             }
-            return r;
+            std::string name = "bluefs_aio" + std::to_string(i);
+            aio_threads[i] = std::thread{ &KernelDevice::_aio_thread, this, i};
+            pthread_setname_np(aio_threads[i].native_handle(), name.c_str());
         }
-        aio_thread = std::thread{ &KernelDevice::_aio_thread, this};
-        pthread_setname_np(aio_thread.native_handle(), "bluefs_aio");
     }
     return 0;
 }
@@ -216,10 +239,12 @@ void KernelDevice::_aio_stop()
 {
     if (aio) {
         dout(10) << __func__ << dendl;
-        aio_stop = true;
-        aio_thread.join();
-        aio_stop = false;
-        aio_queue.shutdown();
+        for (int i = 0; i < thread_num; i++) {
+            aio_stops[i] = true;
+            aio_threads[i].join();
+            aio_stops[i] = false;
+            aio_queues[i].shutdown();
+        }
     }
 }
 
@@ -231,14 +256,14 @@ static bool is_expected_ioerr(const int r)
         r == -EAGAIN || r == -EREMCHG || r == -EIO);
 }
 
-void KernelDevice::_aio_thread()
+void KernelDevice::_aio_thread(int idx)
 {
     dout(10) << __func__ << " start" << dendl;
-    while (!aio_stop) {
+    while (!aio_stops[idx]) {
         dout(40) << __func__ << " polling" << dendl;
         int max = cct->_conf->bdev_aio_reap_max;
         aio_t *aio_s[max];
-        int r = aio_queue.get_next_completed(cct->_conf->bdev_aio_poll_ms,
+        int r = aio_queues[idx].get_next_completed(cct->_conf->bdev_aio_poll_ms,
                                              aio_s, max);
         if (r < 0) {
             derr << __func__ << " got " << cpp_strerror(r) << dendl;
@@ -305,7 +330,7 @@ void KernelDevice::_aio_thread()
     dout(10) << __func__ << " end" << dendl;
 }
 
-void KernelDevice::aio_submit(IOContext *ioc)
+void KernelDevice::aio_submit(IOContext *ioc, bool fixed_thread)
 {
     dout(20) << __func__ << " ioc " << ioc
         << " pending " << ioc->num_pending.load()
@@ -330,9 +355,16 @@ void KernelDevice::aio_submit(IOContext *ioc)
 
     void *priv = static_cast<void*>(ioc);
     int r, retries = 0;
-    r = aio_queue.submit_batch(ioc->running_aios.begin(), e, 
-                    ioc->num_running.load(), priv, &retries);
-    
+    if (fixed_thread) {
+        r = aio_queues[0].submit_batch(ioc->running_aios.begin(), e,
+                                   ioc->num_running.load(), priv, &retries);
+    } else {
+        int idx = ioc->thread_idx;
+        assert(idx >= 0 && idx < thread_num);
+        r = aio_queues[idx].submit_batch(ioc->running_aios.begin(), e,
+                                       ioc->num_running.load(), priv, &retries);
+    }
+
     if (retries)
         derr << __func__ << " retries " << retries << dendl;
     if (r < 0) {
@@ -349,7 +381,7 @@ int KernelDevice::_sync_write(uint64_t off, bufferlist &bl, bool buffered)
 
     std::vector<iovec> iov;
     bl.prepare_iov(&iov);
-    int r = ::pwritev(buffered ? fd_buffered : fd_direct,
+    int r = ::pwritev(buffered ? fd_buffereds[0] : fd_directs[0],
                 &iov[0], iov.size(), off);
 
     if (r < 0) {
@@ -359,7 +391,7 @@ int KernelDevice::_sync_write(uint64_t off, bufferlist &bl, bool buffered)
     }
     if (buffered) {
         // initiate IO and wait till it completes
-        r = ::sync_file_range(fd_buffered, off, len, SYNC_FILE_RANGE_WRITE|SYNC_FILE_RANGE_WAIT_AFTER|SYNC_FILE_RANGE_WAIT_BEFORE);
+        r = ::sync_file_range(fd_buffereds[0], off, len, SYNC_FILE_RANGE_WRITE|SYNC_FILE_RANGE_WAIT_AFTER|SYNC_FILE_RANGE_WAIT_BEFORE);
         if (r < 0) {
             r = -errno;
             derr << __func__ << " sync_file_range error: " << cpp_strerror(r) << dendl;
@@ -420,7 +452,7 @@ int KernelDevice::aio_write(
     if (aio && dio && !buffered) {
         if (bl.length() <= RW_IO_MAX) {
             // fast path (non-huge write)
-            ioc->pending_aios.push_back(aio_t(ioc, fd_direct));
+            ioc->pending_aios.push_back(aio_t(ioc, fd_directs[0]));
             ++ioc->num_pending;
             auto& aio_s = ioc->pending_aios.back();
             bl.prepare_iov(&aio_s.iov);
@@ -463,7 +495,7 @@ int KernelDevice::read(uint64_t off, uint64_t len, bufferlist *pbl,
        derr << __func__ << " aligned_malloc failed!" << dendl;
        goto out;
     }
-    r = ::pread(buffered ? fd_buffered : fd_direct,
+    r = ::pread(buffered ? fd_buffereds[0] : fd_directs[0],
             p, len, off);
     if (r < 0) {
         if (ioc->allow_eio && is_expected_ioerr(r)) {
@@ -492,7 +524,11 @@ int KernelDevice::aio_read(
     int r = 0;
 #ifdef HAVE_LIBAIO
     if (aio && dio) {
-        ioc->pending_aios.push_back(aio_t(ioc, fd_direct));
+        if (ioc->thread_idx == -1) {
+            int ioc->thread_idx = cur_thread;
+            cur_thread = (cur_thread + 1) % thread_num;
+        }
+        ioc->pending_aios.push_back(aio_t(ioc, fd_directs[ioc->thread_idx]));
         ++ioc->num_pending;
         aio_t& aio_s = ioc->pending_aios.back();
         aio_s.pread(off, len);
@@ -522,7 +558,11 @@ int KernelDevice::aio_read(
     int r = 0;
 #ifdef HAVE_LIBAIO
     if (aio && dio) {
-        ioc->pending_aios.push_back(aio_t(ioc, fd_direct));
+        if (ioc->thread_idx == -1) {
+            int ioc->thread_idx = cur_thread;
+            cur_thread = (cur_thread + 1) % thread_num;
+        }
+        ioc->pending_aios.push_back(aio_t(ioc, fd_directs[ioc->thread_idx]));
         ++ioc->num_pending;
         aio_t& aio_s = ioc->pending_aios.back();
         aio_s.pread(off, len, buf);
@@ -551,7 +591,7 @@ int KernelDevice::direct_read_unaligned(uint64_t off, uint64_t len, char *buf)
        goto out;
     }
 
-    r = ::pread(fd_direct, p, aligned_len, aligned_off);
+    r = ::pread(fd_directs[0], p, aligned_len, aligned_off);
     if (r < 0) {
         r = -errno;
         derr << __func__ << " 0x" << std::hex << off << "~" << len << std::dec 
@@ -587,7 +627,7 @@ int KernelDevice::read_random(uint64_t off, uint64_t len, char *buf,
         char *t = buf;
         uint64_t left = len;
         while (left > 0) {
-            r = ::pread(fd_buffered, t, left, off);
+            r = ::pread(fd_buffereds[0], t, left, off);
             if (r < 0) {
                 r = -errno;
                 derr << __func__ << " 0x" << std::hex << off << "~" << left
@@ -600,7 +640,7 @@ int KernelDevice::read_random(uint64_t off, uint64_t len, char *buf,
         }
     } else {
         //direct and aligned read
-        r = ::pread(fd_direct, buf, len, off);
+        r = ::pread(fd_directs[0], buf, len, off);
         if (r < 0) {
             r = -errno;
             derr << __func__ << " direct_aligned_read" << " 0x" << std::hex
@@ -620,7 +660,7 @@ int KernelDevice::invalidate_cache(uint64_t off, uint64_t len)
         << dendl;
     assert(off % block_size == 0);
     assert(len % block_size == 0);
-    int r = posix_fadvise(fd_buffered, off, len, POSIX_FADV_DONTNEED);
+    int r = posix_fadvise(fd_buffereds[0], off, len, POSIX_FADV_DONTNEED);
     if (r) {
         r = -r;
         derr << __func__ << " 0x" << std::hex << off << "~" << len << std::dec
