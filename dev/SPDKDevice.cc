@@ -643,7 +643,7 @@ SPDKDevice::SPDKDevice(BlueFSContext* bct, aio_callback_t cb, void *cbpriv)
     }
     queue_ts.reserve(thread_num);
     aio_queues.reserve(thread_num);
-    aio_queue_lock.reserve(thread_num);
+    aio_queue_locks.reserve(thread_num);
     aio_queue_conds.reserve(thread_num);
     aio_stops.reserve(thread_num);
     for (int i = 0; i < thread_num; i++) {
@@ -691,8 +691,12 @@ int SPDKDevice::open(const std::string& p)
     r = _aio_start();
     if(r < 0) {
         dout(1) << __func__ << " _aio_start failed" << dendl;
-        if(queue_t)
-            delete queue_t;
+        for (int i = 0; i < thread_num; i++) {
+            if (queue_ts[i]) {
+                delete queue_ts[i];
+                queue_ts[i] = nullptr;
+            }
+        }
         return r;
     }
 
@@ -720,9 +724,9 @@ int SPDKDevice::_aio_start()
 {
     dout(10) << __func__ << dendl;
     for (int i = 0; i < thread_num; i++) {
-        std::string name = "bluefs_spdk_" + std::to_string(i);
-        aio_thread[i] = std::thread{ &SPDKDevice::_aio_thread, this, i};
-        pthread_setname_np(aio_thread[i].native_handle(), name.c_str());
+        std::string thread_name = "bluefs_spdk_" + std::to_string(i);
+        aio_threads[i] = std::thread{ &SPDKDevice::_aio_thread, this, i};
+        pthread_setname_np(aio_threads[i].native_handle(), thread_name.c_str());
     }
 
     return 0;
