@@ -11,6 +11,8 @@
 #include <pthread.h>
 #include <condition_variable>
 
+#include <boost/lockfree/queue.hpp>
+
 #include "common/debug.h"
 
 #include "rocksdb/Context.h"
@@ -186,7 +188,8 @@ private:
     bool read_thread_start[thread_num] = {false};
     std::mutex read_thread_lock[thread_num];
     std::condition_variable read_cond[thread_num];
-    std::deque<rocksdb::Context*> read_queue[thread_num];
+    //std::deque<rocksdb::Context*> read_queue[thread_num];
+    boost::lockfree::queue<rocksdb::Context*> read_queue[thread_num];
 };
 
 class BlueFSRocksdbLogger : public rocksdb::Logger {

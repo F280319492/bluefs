@@ -323,6 +323,7 @@ BlueRocksEnv::BlueRocksEnv(BlueFS *f)
 }
 
 void BlueRocksEnv::_kv_read_thread(int idx) {
+    /*
     std::unique_lock<std::mutex> l(read_thread_lock[idx]);
     read_thread_start[idx] = true;
     read_cond[idx].notify_all();
@@ -338,6 +339,14 @@ void BlueRocksEnv::_kv_read_thread(int idx) {
             ctx->complete(ctx->f_s);
         }
         l.lock();
+    }
+    */
+    read_thread_start[idx] = true;
+    while(!read_thread_stop[idx]) {
+        rocksdb::Context *ctx;
+        if (read_queue[idx].pop(ctx)) {
+            ctx->complete(ctx->f_s);
+        }
     }
 }
 
@@ -560,9 +569,12 @@ rocksdb::Status BlueRocksEnv::GetAbsolutePath(
 void BlueRocksEnv::ScheduleAayncRead(rocksdb::Context* ctx) {
     int idx = cur_thread;
     cur_thread = (cur_thread + 1) % thread_num;
+    /*
     std::lock_guard<std::mutex> l(read_thread_lock[idx]);
     read_queue[idx].push_back(ctx);
     read_cond[idx].notify_one();
+    */
+    read_queue[idx].push(ctx);
 }
 
 rocksdb::Status BlueRocksEnv::NewLogger(
