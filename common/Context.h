@@ -19,6 +19,7 @@ class Context {
     finish(r);
   }
   int ret;
+  int thread_id;
 };
 
 #endif //CONTEXT_H

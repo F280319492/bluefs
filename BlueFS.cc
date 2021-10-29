@@ -789,6 +789,7 @@ struct BlueFS::C_BlueFS_OnFinish : Context {
         }
 
         *result = rocksdb::Slice(out, read_len);
+        ctx->thread_id = this->thread_id;
         if(r == 0) {
             ctx->complete_without_del(rocksdb::Status::OK());
         } else {

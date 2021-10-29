@@ -315,6 +315,7 @@ BlueRocksEnv::BlueRocksEnv(BlueFS *f)
         : EnvWrapper(Env::Default()),  // forward most of it to POSIX
           fs(f)
 {
+    assert(thread_num == f->cct->_conf->thread_per_dev*f->cct->_conf->thread_per_dev_shard);
     for (int i = 0; i < thread_num; i++) {
         read_thread[i] = std::thread{ &BlueRocksEnv::_kv_read_thread, this, i};
         std::string name = "rocksdb_read_" + std::to_string(i);
@@ -567,8 +568,9 @@ rocksdb::Status BlueRocksEnv::GetAbsolutePath(
 }
 
 void BlueRocksEnv::ScheduleAayncRead(rocksdb::Context* ctx) {
-    int idx = cur_thread;
-    cur_thread = (cur_thread + 1) % thread_num;
+    int thread_per_dev_shard = fs->cct->_conf->thread_per_dev_shard;
+    int idx = cur_thread + ctx->thread_id * thread_per_dev_shard;
+    cur_thread = (cur_thread + 1) % thread_per_dev_shard;
     /*
     std::lock_guard<std::mutex> l(read_thread_lock[idx]);
     read_queue[idx].push_back(ctx);

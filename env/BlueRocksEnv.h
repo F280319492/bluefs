@@ -182,14 +182,14 @@ public:
     }
 private:
     BlueFS *fs;
-    static const int thread_num = 6;
+    static const int thread_num = 3;
     std::thread read_thread[thread_num];
     bool read_thread_stop[thread_num] = {false};
     bool read_thread_start[thread_num] = {false};
     std::mutex read_thread_lock[thread_num];
     std::condition_variable read_cond[thread_num];
     //std::deque<rocksdb::Context*> read_queue[thread_num];
-    boost::lockfree::queue<rocksdb::Context*> read_queue[thread_num];
+    boost::lockfree::spsc_queue<rocksdb::Context*, boost::lockfree::capacity<1024>> read_queue[thread_num];
 };
 
 class BlueFSRocksdbLogger : public rocksdb::Logger {
