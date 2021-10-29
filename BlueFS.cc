@@ -854,7 +854,7 @@ int BlueFS::_read_random(
     dout(10) << __func__ << " got " << ret << dendl;
     if(ioc_t->has_pending_aios()) {
         bluefs_ctx->read_len = ret;
-        bdev->aio_submit(ioc_t);
+        bdev->aio_submit(ioc_t, false);
     } else {
         --h->file->num_reading;
         delete bluefs_ctx;
