@@ -19,6 +19,10 @@
 
 #define SPDK_PREFIX "spdk:"
 
+#ifndef MAX_DEV_THREAD
+#define MAX_DEV_THREAD 5
+#endif
+
 struct IOContext {
 private:
     std::mutex lock;

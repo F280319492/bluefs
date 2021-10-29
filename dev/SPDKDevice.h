@@ -33,14 +33,16 @@ class SPDKDevice : public BlockDevice {
    */
     SharedDriverData *driver;
     std::string name;
-    SharedDriverQueueData *queue_t;
-    std::deque<std::pair<Task *, IOContext *>> aio_queue;
-    std::mutex aio_queue_lock;
-    std::condition_variable aio_queue_cond;
-    std::thread aio_thread;
 
-    bool aio_stop;
-    void _aio_thread();
+    int thread_num;
+    std::vector<SharedDriverQueueData *> queue_ts;
+    std::vector<std::deque<std::pair<Task *, IOContext *>>> aio_queues;
+    std::vector<std::mutex> aio_queue_locks;
+    std::vector<std::condition_variable> aio_queue_conds;
+    std::thread aio_threads[MAX_DEV_THREAD];
+    std::vector<bool> aio_stops;
+
+    void _aio_thread(int idx);
     int _aio_start();
     void _aio_stop();
 
