@@ -14,10 +14,6 @@
 #define RW_IO_MAX 0x7FFFF000
 #endif
 
-#ifndef MAX_DEV_THREAD
-#define MAX_DEV_THREAD 5
-#endif
-
 class KernelDevice : public BlockDevice {
 
     uint64_t size;

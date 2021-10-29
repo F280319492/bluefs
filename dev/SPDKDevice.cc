@@ -27,6 +27,8 @@ static constexpr uint16_t inline_segment_num = 32;
 
 static BlueFSContext* g_context = nullptr;
 
+static thread_local int cur_thread = 0;
+
 static void io_complete(void *t, const struct spdk_nvme_cpl *completion);
 
 pid_t gettid(void)
@@ -626,16 +628,28 @@ void io_complete(void *t, const struct spdk_nvme_cpl *completion)
 SPDKDevice::SPDKDevice(BlueFSContext* bct, aio_callback_t cb, void *cbpriv)
         :   BlockDevice(bct),
             driver(nullptr),
-            queue_t(nullptr),
-            aio_stop(false),
+            thread_num(bct->_conf->thread_per_dev),
+
             block_size(0),
             size(0),
             aio_callback(cb),
             aio_callback_priv(cbpriv)
 {
     g_context = bct;
+    cur_thread = 0;
+    if (thread_num > MAX_DEV_THREAD) {
+        thread_num = MAX_DEV_THREAD;
+    }
+    queue_ts.reserve(thread_num);
+    aio_queues.reserve(thread_num);
+    aio_queue_lock.reserve(thread_num);
+    aio_queue_conds.reserve(thread_num);
+    aio_stops.reserve(thread_num);
+    for (int i = 0; i < thread_num; i++) {
+        queue_ts[i] = nullptr;
+        aio_stops[i] = false;
+    }
 }
-
 
 int SPDKDevice::open(const std::string& p)
 {
@@ -667,8 +681,11 @@ int SPDKDevice::open(const std::string& p)
             << " block_size " << block_size << " (" << block_size
             << ")" << dendl;
 
-    if (!queue_t)
-        queue_t = new SharedDriverQueueData(this, driver);
+    for (int i = 0; i < thread_num; i++) {
+        if (!queue_ts[i]) {
+            queue_ts[i] = new SharedDriverQueueData(this, driver);
+        }
+    }
 
     r = _aio_start();
     if(r < 0) {
@@ -686,8 +703,12 @@ void SPDKDevice::close()
     dout(1) << __func__ << dendl;
 
     _aio_stop();
-    delete queue_t;
-    queue_t = nullptr;
+    for (int i = 0; i < thread_num; i++) {
+        if (queue_ts[i]) {
+            delete queue_ts[i];
+            queue_ts[i] = nullptr;
+        }
+    }
     name.clear();
     driver->remove_device(this);
 
@@ -696,41 +717,49 @@ void SPDKDevice::close()
 
 int SPDKDevice::_aio_start()
 {
-    aio_thread = std::thread{ &SPDKDevice::_aio_thread, this};
-    pthread_setname_np(aio_thread.native_handle(), "bluefs_spdk");
+    dout(10) << __func__ << dendl;
+    for (int i = 0; i < thread_num; i++) {
+        std::string name = "bluefs_spdk_" + std::to_string(i);
+        aio_thread[i] = std::thread{ &SPDKDevice::_aio_thread, this, i};
+        pthread_setname_np(aio_thread[i].native_handle(), name.c_str());
+    }
+
     return 0;
 }
 
 void SPDKDevice::_aio_stop()
 {
     dout(10) << __func__ << dendl;
-    {
-        std::lock_guard<std::mutex> l(aio_queue_lock);
-        aio_stop = true;
-        dout(10) << __func__ << " aio_stop:" << aio_stop << dendl;
-        aio_queue_cond.notify_all();
+    for (int i = 0; i < thread_num; i++) {
+        {
+            std::lock_guard<std::mutex> l(aio_queue_locks[i]);
+            aio_stops[i] = true;
+            dout(10) << __func__ << " aio_stop:" << aio_stops[i] << dendl;
+            aio_queue_conds[i].notify_all();
+        }
+        aio_threads[i].join();
+        aio_stops[i] = false;
     }
-    aio_thread.join();
-    aio_stop = false;
+
     dout(10) << __func__ << " end" << dendl;
 }
 
-void SPDKDevice::_aio_thread()
+void SPDKDevice::_aio_thread(int idx)
 {
     dout(10) << __func__ << " start" << dendl;
-    std::unique_lock<std::mutex> l(aio_queue_lock);
-    while (!aio_stop) {
-        if(queue_t) {
-            if(aio_queue.empty() && queue_t->current_queue_depth == 0) {
-                aio_queue_cond.wait(l);
+    std::unique_lock<std::mutex> l(aio_queue_locks[idx]);
+    while (!aio_stops[idx]) {
+        if(queue_ts[idx]) {
+            if(aio_queues[idx].empty() && queue_ts[idx]->current_queue_depth == 0) {
+                aio_queue_conds[idx].wait(l);
             }
             std::deque<std::pair<Task *, IOContext *>> tmp;
-            tmp.swap(aio_queue);
+            tmp.swap(aio_queues[idx]);
             l.unlock();
             for (auto& t : tmp) {
-                queue_t->_aio_handle(t.first, t.second);
+                queue_ts[idx]->_aio_handle(t.first, t.second);
             }
-            queue_t->_aio_check_completions();
+            queue_ts[idx]->_aio_check_completions();
             l.lock();
         }
     }
@@ -756,9 +785,17 @@ void SPDKDevice::aio_submit(IOContext *ioc, bool fixed_thread)
         // Only need to push the first entry
         ioc->nvme_task_first = ioc->nvme_task_last = nullptr;
         {
-            std::lock_guard<std::mutex> l(aio_queue_lock);
-            aio_queue.push_back(std::make_pair(t, ioc));
-            aio_queue_cond.notify_one();
+            if (fixed_thread) {
+                std::lock_guard<std::mutex> l(aio_queue_locks[0]);
+                aio_queues[0].push_back(std::make_pair(t, ioc));
+                aio_queue_conds[0].notify_one();
+            } else {
+                int idx = ioc->thread_idx;
+                assert(idx >= 0 && idx < thread_num);
+                std::lock_guard<std::mutex> l(aio_queue_locks[idx]);
+                aio_queues[idx].push_back(std::make_pair(t, ioc));
+                aio_queue_conds[idx].notify_one();
+            }
         }
     }
 }
@@ -873,6 +910,10 @@ int SPDKDevice::aio_read(
     }
     assert(is_valid_io(off, len));
 
+    if (ioc->thread_idx == -1) {
+        ioc->thread_idx = cur_thread;
+        cur_thread = (cur_thread + 1) % thread_num;
+    }
     Task *t = new Task(this, IOCommand::READ_COMMAND, off, len);
     char *buf = (char*)aligned_malloc(len, block_size);
     assert(buf);
@@ -907,6 +948,10 @@ int SPDKDevice::aio_read(
     }
     assert(is_valid_io(off, len));
 
+    if (ioc->thread_idx == -1) {
+        ioc->thread_idx = cur_thread;
+        cur_thread = (cur_thread + 1) % thread_num;
+    }
     Task *t = new Task(this, IOCommand::READ_COMMAND, off, len);
     assert((uint64_t)buf % block_size == 0);
     pbl->append(buf, len, true, false);
