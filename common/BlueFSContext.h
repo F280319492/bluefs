@@ -80,7 +80,8 @@ public:
                 ("bluefs_spdk_coremask",            bpo::value<std::string>()->default_value("0x1"), "")
                 ("bluefs_spdk_mem",                 bpo::value<uint32_t>()->default_value(512), "")
                 ("bdev_nvme_retry_count",           bpo::value<int>()->default_value(-1), "")
-                ("thread_per_dev",                  bpo::value<int>()->default_value(2), "");
+                ("thread_per_dev",                  bpo::value<int>()->default_value(1), "")
+                ("thread_per_dev_shard",            bpo::value<int>()->default_value(3), "");
 
         try {
             std::ifstream ifs(conf_path);
@@ -159,6 +160,9 @@ public:
         }
         if (vm.count("thread_per_dev")) {
             _conf->thread_per_dev = vm["thread_per_dev"].as<int>();
+        }
+        if (vm.count("thread_per_dev_shard")) {
+            _conf->thread_per_dev_shard = vm["thread_per_dev_shard"].as<int>();
         }
         if (vm.empty()) {
             std::cout << "no options found \n";
