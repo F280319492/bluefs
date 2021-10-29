@@ -601,6 +601,7 @@ void io_complete(void *t, const struct spdk_nvme_cpl *completion)
                 }
             } else if (ioc->read_context) {
                 if (--ioc->num_running == 0) {
+                    ioc->read_context->thread_id = ioc->thread_idx;
                     ioc->read_context->complete_without_del(ioc->get_return_value());
                     //dout(0) << __func__ << " finish " << ioc<<dendl;
                     if(ioc) {
