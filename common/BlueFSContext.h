@@ -34,6 +34,7 @@ struct bulefs_config {
     uint32_t bluefs_spdk_mem; //512
     int bdev_nvme_retry_count;  //-1
     int thread_per_dev;  //2
+    int thread_per_dev_shard;  //3
 };
 
 class BlueFSContext {
