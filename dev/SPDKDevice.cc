@@ -18,6 +18,7 @@
 #include "SPDKDevice.h"
 #include "common/debug.h"
 #include "common/utime.h"
+#include "common/queue_pair.h"
 
 static constexpr uint16_t data_buffer_default_num = 16384;
 
@@ -603,12 +604,6 @@ void io_complete(void *t, const struct spdk_nvme_cpl *completion)
                 if (--ioc->num_running == 0) {
                     ioc->read_context->thread_id = ioc->thread_idx;
                     ioc->read_context->complete_without_del(ioc->get_return_value());
-                    //dout(0) << __func__ << " finish " << ioc<<dendl;
-                    if(ioc) {
-                        delete ioc;
-                    } else {
-                        dout(10) << __func__ << " ioc is null" << dendl;
-                    }
                 }
             } else {
                 ctx->try_aio_wake();
@@ -650,6 +645,7 @@ SPDKDevice::SPDKDevice(BlueFSContext* bct, aio_callback_t cb, void *cbpriv)
         queue_ts[i] = nullptr;
         aio_stops[i] = false;
     }
+    gobal_queue_qairs.Init(thread_num);
 }
 
 int SPDKDevice::open(const std::string& p)

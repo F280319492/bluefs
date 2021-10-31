@@ -5,7 +5,7 @@
 #ifndef BLUEFS_QUEUE_PAIR_H
 #define BLUEFS_QUEUE_PAIR_H
 
-#include <boost/lockfree/queue.hpp>
+#include <boost/lockfree/spsc_queue.hpp>
 #include <unordered_map>
 #include <atomic>
 #include <mutex>
@@ -21,18 +21,20 @@ struct queue_qair {
 
 struct queue_qairs {
     int shard_num;
-    uint64_t thread_seq;
-    std::mutex thread_seq_lock;
+    int queue_seq;
+    std::mutex queue_seq_lock;
     std::unordered_map<int, queue_qair*> queue_qair_hash_map;
     std::vector<std::vector<queue_qair*>> dev_queues;
 
-    uint64_t register_queue_pair();
-    void unregister_queue_pair(uint64_t);
-    queue_qair* get_queue_qair(uint64_t);
+    int register_queue_pair();
+    void unregister_queue_pair(int);
+    queue_qair* get_queue_qair(int);
     std::vector<queue_qair*>& get_dev_queue(int idx);
     void Init(int num);
+    void push(int queue_id, void* val, int idx);
+    void pop(int queue_id, void* val, int idx);
 
-    queue_qairs() : thread_seq(0), shard_num(0) {}
+    queue_qairs() : shard_num(0), thread_seq(0) {}
 };
 
 extern queue_qairs gobal_queue_qairs;

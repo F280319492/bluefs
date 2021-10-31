@@ -21,6 +21,7 @@
 
 #include "KernelDevice.h"
 #include "common/utime.h"
+#include "common/queue_pair.h"
 
 static thread_local int cur_thread = 0;
 
@@ -47,6 +48,7 @@ KernelDevice::KernelDevice(BlueFSContext* c, aio_callback_t cb, void *cbpriv)
         aio_queues[i] = aio_queue_t(cct->_conf->bdev_aio_max_queue_depth);
         aio_stops[i] = false;
     }
+    gobal_queue_qairs.Init(thread_num);
 }
 
 int KernelDevice::_lock()
@@ -321,11 +323,6 @@ void KernelDevice::_aio_thread(int idx)
                     if (--ioc->num_running == 0) {
                         ioc->read_context->thread_id = idx;
                         ioc->read_context->complete_without_del(ioc->get_return_value());
-                        if(ioc) {
-                            delete ioc;
-                        } else {
-                            dout(10) << __func__ << " ioc is null" << dendl;
-                        }
                     }
                 } else {
                     ioc->try_aio_wake();

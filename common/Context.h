@@ -19,7 +19,7 @@ class Context {
     finish(r);
   }
   int ret;
-  int thread_id;
+  int queue_id;
 };
 
 #endif //CONTEXT_H

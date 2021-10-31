@@ -313,43 +313,7 @@ public:
 
 BlueRocksEnv::BlueRocksEnv(BlueFS *f)
         : EnvWrapper(Env::Default()),  // forward most of it to POSIX
-          fs(f)
-{
-    assert(thread_num == f->cct->_conf->thread_per_dev*f->cct->_conf->thread_per_dev_shard);
-    for (int i = 0; i < thread_num; i++) {
-        read_thread[i] = std::thread{ &BlueRocksEnv::_kv_read_thread, this, i};
-        std::string name = "rocksdb_read_" + std::to_string(i);
-        pthread_setname_np(read_thread[i].native_handle(), name.c_str());
-    }
-}
-
-void BlueRocksEnv::_kv_read_thread(int idx) {
-    /*
-    std::unique_lock<std::mutex> l(read_thread_lock[idx]);
-    read_thread_start[idx] = true;
-    read_cond[idx].notify_all();
-
-    while(!read_thread_stop[idx]) {
-        if(read_queue[idx].empty()) {
-            read_cond[idx].wait(l);
-        }
-        std::deque<rocksdb::Context *> read_finish;
-        read_finish.swap(read_queue[idx]);
-        l.unlock();
-        for (auto ctx : read_finish) {
-            ctx->complete(ctx->f_s);
-        }
-        l.lock();
-    }
-    */
-    read_thread_start[idx] = true;
-    while(!read_thread_stop[idx]) {
-        rocksdb::Context *ctx;
-        if (read_queue[idx].pop(ctx)) {
-            ctx->complete(ctx->f_s);
-        }
-    }
-}
+          fs(f) {}
 
 rocksdb::Status BlueRocksEnv::NewSequentialFile(
         const std::string& fname,
@@ -565,18 +529,6 @@ rocksdb::Status BlueRocksEnv::GetAbsolutePath(
     // this is a lie...
     *output_path = "/" + db_path;
     return rocksdb::Status::OK();
-}
-
-void BlueRocksEnv::ScheduleAayncRead(rocksdb::Context* ctx) {
-    int thread_per_dev_shard = fs->cct->_conf->thread_per_dev_shard;
-    int idx = cur_thread + ctx->thread_id * thread_per_dev_shard;
-    cur_thread = (cur_thread + 1) % thread_per_dev_shard;
-    /*
-    std::lock_guard<std::mutex> l(read_thread_lock[idx]);
-    read_queue[idx].push_back(ctx);
-    read_cond[idx].notify_one();
-    */
-    read_queue[idx].push(ctx);
 }
 
 rocksdb::Status BlueRocksEnv::NewLogger(
