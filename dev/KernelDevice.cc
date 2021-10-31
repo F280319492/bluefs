@@ -37,10 +37,10 @@ KernelDevice::KernelDevice(BlueFSContext* c, aio_callback_t cb, void *cbpriv)
     }
 
     cur_thread = 0;
-    fd_directs.reserve(thread_num);
-    fd_buffereds.reserve(thread_num);
-    aio_queues.reserve(thread_num);
-    aio_stops.reserve(thread_num);
+    fd_directs.resize(thread_num);
+    fd_buffereds.resize(thread_num);
+    //aio_queues.resize(thread_num);
+    aio_stops.resize(thread_num);
     for (int i = 0; i < thread_num; i++) {
         fd_directs[i] = -1;
         fd_buffereds[i] = -1;

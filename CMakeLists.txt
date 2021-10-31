@@ -21,6 +21,7 @@ set(libbluefs_srcs
         common/bufferlist.cc
         common/debug.cc
         common/utime.cc
+        common/queue_pair.cc
         dev/KernelDevice.cc
         dev/BlockDevice.cc
         dev/SPDKDevice.cc
