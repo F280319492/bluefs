@@ -8,6 +8,7 @@
 #include <boost/lockfree/queue.hpp>
 #include <unordered_map>
 #include <atomic>
+#include <assert.h>
 
 struct queue_qair {
     uint64_t queue_num;
