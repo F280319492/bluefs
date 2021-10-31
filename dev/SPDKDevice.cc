@@ -641,11 +641,11 @@ SPDKDevice::SPDKDevice(BlueFSContext* bct, aio_callback_t cb, void *cbpriv)
     if (thread_num > MAX_DEV_THREAD) {
         thread_num = MAX_DEV_THREAD;
     }
-    queue_ts.reserve(thread_num);
-    aio_queues.reserve(thread_num);
-    aio_queue_locks.reserve(thread_num);
-    aio_queue_conds.reserve(thread_num);
-    aio_stops.reserve(thread_num);
+    queue_ts.resize(thread_num);
+    aio_queues.resize(thread_num);
+    aio_queue_locks.resize(thread_num);
+    aio_queue_conds.resize(thread_num);
+    aio_stops.resize(thread_num);
     for (int i = 0; i < thread_num; i++) {
         queue_ts[i] = nullptr;
         aio_stops[i] = false;
