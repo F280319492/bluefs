@@ -11,7 +11,7 @@
 #define ERRORLEVEL 4
 
 #define dout(level)  (level - DEBUGLEVEL <=0 ) && std::cout << __FILE__ << ":" << __LINE__ << ":" << __func__ << " "
-#define rdout(level) (level - INFOLEVEL >=0 ) && std::cout
+#define rdout(level) (level - ERRORLEVEL >=0 ) && std::cout
 #define dendl std::endl
 #define derr std::cerr << __FILE__ << ":" << __LINE__ << ":" << __func__ << " "
 

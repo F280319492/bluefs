@@ -3,6 +3,7 @@
 #include <time.h>
 
 #include "BlueFS.h"
+#include "common/queue_pair.h"
 
 BlueFS::~BlueFS()
 {
@@ -763,39 +764,51 @@ struct BlueFS::C_BlueFS_OnFinish : Context {
     size_t read_len;
     std::vector<extent> fs_extent;
     bufferlist bl;
+    IOContext* ioc;
+    bool is_enqueue;
 
     C_BlueFS_OnFinish(BlueFS* bluefs_, FileReader *h_, char *out_,
                       size_t len_, rocksdb::Slice* result_, rocksdb::Context* ctx_) :
-            bluefs(bluefs_), h(h_), out(out_), len(len_), result(result_), ctx(ctx_){
-        read_len = 0;
+            Context(ctx_->queue_id), bluefs(bluefs_), h(h_), out(out_), len(len_),
+            result(result_), ctx(ctx_), read_len(0), ioc(nullptr), is_enqueue(false) {}
+
+    ~C_BlueFS_OnFinish() {
+        if (ioc) {
+            delete ioc;
+            ioc = nullptr;
+        }
     }
 
     void finish(int r) override {
-        --h->file->num_reading;
-        assert(read_len == len);
-
-        uint64_t x_off = 0, t_off, t_len;
-        uint64_t b_off = 0;
-        size_t extent_num = fs_extent.size();
-
-        for (size_t i = 0; i < extent_num; i++) {
-            t_off = fs_extent[i].off;
-            t_len = fs_extent[i].len;
-            if (!fs_extent[i].zero_copy) {
-                bl.copy(out+x_off, t_len, t_off+b_off);
-            }
-            x_off += t_len;
-            b_off += fs_extent[i].size;
-        }
-
-        *result = rocksdb::Slice(out, read_len);
-        ctx->thread_id = this->thread_id;
-        if(r == 0) {
-            ctx->complete_without_del(rocksdb::Status::OK());
+        if (!is_enqueue) {
+            ret = r;
+            is_enqueue = true;
+            gobal_queue_qairs.push(queue_id, this, 1);
         } else {
-            ctx->complete_without_del(rocksdb::Status::IOError());
+            --h->file->num_reading;
+            assert(read_len == len);
+
+            uint64_t x_off = 0, t_off, t_len;
+            uint64_t b_off = 0;
+            size_t extent_num = fs_extent.size();
+
+            for (size_t i = 0; i < extent_num; i++) {
+                t_off = fs_extent[i].off;
+                t_len = fs_extent[i].len;
+                if (!fs_extent[i].zero_copy) {
+                    bl.copy(out+x_off, t_len, t_off+b_off);
+                }
+                x_off += t_len;
+                b_off += fs_extent[i].size;
+            }
+
+            *result = rocksdb::Slice(out, read_len);
+            if(r == 0) {
+                ctx->complete(rocksdb::Status::OK());
+            } else {
+                ctx->complete(rocksdb::Status::IOError());
+            }
         }
-        //delete this;
     }
 };
 
@@ -826,6 +839,8 @@ int BlueFS::_read_random(
     int ret = 0;
     C_BlueFS_OnFinish* bluefs_ctx = new C_BlueFS_OnFinish(this, h, out, len, result, ctx);
     IOContext* ioc_t = new IOContext(cct, NULL, true, bluefs_ctx); // allow EIO;
+    bluefs_ctx->ioc = ioc_t;
+
     while (len > 0) {
         uint64_t x_off = 0;
         int r;

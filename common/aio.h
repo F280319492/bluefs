@@ -46,7 +46,7 @@ struct aio_t {
         offset = _offset;
         length = len;
 
-        assert((uint64_t)buf % (uint64_t)4096 == 0);
+        assert((uint64_t)buf % (uint64_t)512 == 0);
         char* p = buf;
         if (!p) {
             derr << __func__ << " aligned_malloc failed!" << dendl;

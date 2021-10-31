@@ -248,6 +248,7 @@ public:
             buffernode node;
             node.len = capacity;
             node.is_align = true;
+	    node.need_free = true;
             uint32_t align_len = align_up(capacity, align_size);
             node.buf = aligned_malloc(align_len, align_size);
             if (!node.buf) {

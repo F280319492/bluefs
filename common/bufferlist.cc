@@ -28,7 +28,8 @@ uint32_t bufferlist::crc32c(uint32_t) const {
 
 bool bufferlist::encode(const void* buf, size_t len) {
     if (bl.empty() || bl.back().len+len > bl.back().cap) {
-        size_t alloc_size = std::max(len, (size_t)ALLOC_SIZE);
+        //size_t alloc_size = std::max(len, (size_t)ALLOC_SIZE);
+	size_t alloc_size = std::max(len, (size_t)73400320);
         alloc_size = align_up(alloc_size, (size_t)ALLOC_SIZE);
         void* align_buf = aligned_malloc(alloc_size, ALLOC_SIZE);
         if (!align_buf) {

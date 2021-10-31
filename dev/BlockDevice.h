@@ -17,7 +17,7 @@
 #include "common/Context.h"
 #include "common/aio.h"
 
-#define SPDK_PREFIX "spdk:"
+#define SPDK_PREFIX "trtype=PCIe traddr="
 
 #ifndef MAX_DEV_THREAD
 #define MAX_DEV_THREAD 5
@@ -45,10 +45,9 @@ public:
     std::atomic_int num_running = {0};
     bool allow_eio;
     Context *read_context;
-    int thread_idx;
     explicit IOContext(BlueFSContext* c, void *p, bool eio = false,
                         Context *context = nullptr)
-        : cct(c), priv(p), allow_eio(eio), read_context(context), thread_idx(-1) {}
+        : cct(c), priv(p), allow_eio(eio), read_context(context) {}
 
     // no copying
     IOContext(const IOContext& other) = delete;

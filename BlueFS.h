@@ -317,7 +317,8 @@ public:
       : cct(new BlueFSContext()),
         bdev(nullptr),
         ioc(nullptr),
-        block_total(0) {}
+        block_total(0),
+        alloc(nullptr)	{}
     ~BlueFS();
 
     // the super is always stored on bdev 0

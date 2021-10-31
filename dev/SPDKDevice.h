@@ -25,6 +25,13 @@ class SharedDriverData;
 class SharedDriverQueueData;
 struct Task;
 
+struct mypair {
+    Task* task;
+    IOContext* ioc;
+
+    mypair(Task* t, IOContext* i) : task(t), ioc(i) {}
+};
+
 class SPDKDevice : public BlockDevice {
     /**
    * points to pinned, physically contiguous memory region;
@@ -37,8 +44,8 @@ class SPDKDevice : public BlockDevice {
     int thread_num;
     std::vector<SharedDriverQueueData *> queue_ts;
     std::vector<std::deque<std::pair<Task *, IOContext *>>> aio_queues;
-    std::vector<std::mutex> aio_queue_locks;
-    std::vector<std::condition_variable> aio_queue_conds;
+    std::mutex aio_queue_locks[MAX_DEV_THREAD];
+    std::condition_variable aio_queue_conds[MAX_DEV_THREAD];
     std::thread aio_threads[MAX_DEV_THREAD];
     std::vector<bool> aio_stops;
 

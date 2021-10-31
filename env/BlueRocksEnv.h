@@ -149,8 +149,6 @@ public:
     // same directory.
     rocksdb::Status GetTestDirectory(std::string* path) override;
 
-    void ScheduleAayncRead(rocksdb::Context* ctx) override;
-
     // Create and return a log file for storing informational messages.
     rocksdb::Status NewLogger(
             const std::string& fname,
@@ -164,32 +162,10 @@ public:
         return fs;
     }
 
-    void _kv_read_thread(int idx);
-
     explicit BlueRocksEnv(BlueFS *f);
-    ~BlueRocksEnv() {
-        for (int i = 0; i < thread_num; i++) {
-            {
-                std::unique_lock<std::mutex> l(read_thread_lock[i]);
-                while (!read_thread_start[i]) {
-                    read_cond[i].wait(l);
-                }
-                read_thread_stop[i] = true;
-                read_cond[i].notify_all();
-            }
-            read_thread[i].join();
-        }
-    }
+    ~BlueRocksEnv() {}
 private:
     BlueFS *fs;
-    static const int thread_num = 3;
-    std::thread read_thread[thread_num];
-    bool read_thread_stop[thread_num] = {false};
-    bool read_thread_start[thread_num] = {false};
-    std::mutex read_thread_lock[thread_num];
-    std::condition_variable read_cond[thread_num];
-    //std::deque<rocksdb::Context*> read_queue[thread_num];
-    boost::lockfree::spsc_queue<rocksdb::Context*, boost::lockfree::capacity<1024>> read_queue[thread_num];
 };
 
 class BlueFSRocksdbLogger : public rocksdb::Logger {
@@ -208,7 +184,8 @@ public:
     // printed.
     void Logv(const rocksdb::InfoLogLevel log_level, const char* format,
               va_list ap) override {
-        int v = rocksdb::NUM_INFO_LOG_LEVELS - log_level - 1;
+        //int v = rocksdb::NUM_INFO_LOG_LEVELS - log_level - 1;
+        int v = log_level;
         char buf[65536];
         vsnprintf(buf, sizeof(buf), format, ap);
         rdout(v) << buf << dendl;

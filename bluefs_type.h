@@ -129,7 +129,7 @@ struct bluefs_transaction_t {
 
     void clear() {
         seq = 0;
-        op_bl.clear(); //clear_free ??
+        op_bl.clear_free(); //clear_free ??
     }
     bool empty() const {
         return op_bl.length() == 0;

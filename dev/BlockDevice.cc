@@ -39,14 +39,10 @@ void IOContext::aio_wait()
 BlockDevice *BlockDevice::create(BlueFSContext* cct, const std::string& path,
 				 aio_callback_t cb, void *cbpriv)
 {
-    std::string type = "kernel";
-    char buf[PATH_MAX + 1];
-    int r = ::readlink(path.c_str(), buf, sizeof(buf) - 1);
-    if (r >= 0) {
-        buf[r] = '\0';
-        char *bname = ::basename(buf);
-        if (strncmp(bname, SPDK_PREFIX, sizeof(SPDK_PREFIX)-1) == 0)
-            type = "ust-nvme";
+    //std::string type = "kernel";
+    std::string type = "ust-nvme";
+    if (path.find(SPDK_PREFIX) != std::string::npos) {
+        type = "ust-nvme";
     }
 
     dout(1) << __func__ << " path " << path << " type " << type << dendl;

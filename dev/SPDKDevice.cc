@@ -18,6 +18,7 @@
 #include "SPDKDevice.h"
 #include "common/debug.h"
 #include "common/utime.h"
+#include "common/queue_pair.h"
 
 static constexpr uint16_t data_buffer_default_num = 16384;
 
@@ -124,7 +125,9 @@ public:
         spdk_nvme_ctrlr_get_default_io_qpair_opts(ctrlr, &opts, sizeof(opts));
         opts.qprio = SPDK_NVME_QPRIO_URGENT;
         // usable queue depth should minus 1 to aovid overflow.
-        max_queue_depth = opts.io_queue_size - 1;
+        //opts.io_queue_size = 1024;
+	//opts.io_queue_requests = 8192;
+	max_queue_depth = opts.io_queue_size - 1;
         dout(0) << __func__ << " max_queue_depth:" << max_queue_depth << dendl;
         qpair = spdk_nvme_ctrlr_alloc_io_qpair(ctrlr, &opts, sizeof(opts));
         assert(qpair != NULL);
@@ -368,7 +371,7 @@ again:
                         ns, qpair, lba_off, lba_count, io_complete, t, 0,
                         data_buf_reset_sgl, data_buf_next_sge);
                 if (r < 0) {
-                    derr << __func__ << " failed to read" << dendl;
+                    derr << __func__ << " failed to read " <<  r << " " << lba_off << "~" << lba_count << dendl;
                     t->release_segs(this);
                     delete t;
                     abort();
@@ -601,14 +604,7 @@ void io_complete(void *t, const struct spdk_nvme_cpl *completion)
                 }
             } else if (ioc->read_context) {
                 if (--ioc->num_running == 0) {
-                    ioc->read_context->thread_id = ioc->thread_idx;
                     ioc->read_context->complete_without_del(ioc->get_return_value());
-                    //dout(0) << __func__ << " finish " << ioc<<dendl;
-                    if(ioc) {
-                        delete ioc;
-                    } else {
-                        dout(10) << __func__ << " ioc is null" << dendl;
-                    }
                 }
             } else {
                 ctx->try_aio_wake();
@@ -643,13 +639,12 @@ SPDKDevice::SPDKDevice(BlueFSContext* bct, aio_callback_t cb, void *cbpriv)
     }
     queue_ts.resize(thread_num);
     aio_queues.resize(thread_num);
-    //aio_queue_locks.resize(thread_num);
-    //aio_queue_conds.resize(thread_num);
     aio_stops.resize(thread_num);
     for (int i = 0; i < thread_num; i++) {
         queue_ts[i] = nullptr;
         aio_stops[i] = false;
     }
+    gobal_queue_qairs.Init(thread_num);
 }
 
 int SPDKDevice::open(const std::string& p)
@@ -724,7 +719,7 @@ int SPDKDevice::_aio_start()
 {
     dout(10) << __func__ << dendl;
     for (int i = 0; i < thread_num; i++) {
-        std::string thread_name = "bluefs_spdk_" + std::to_string(i);
+        std::string thread_name = "onesfs_spdk_" + std::to_string(i);
         aio_threads[i] = std::thread{ &SPDKDevice::_aio_thread, this, i};
         pthread_setname_np(aio_threads[i].native_handle(), thread_name.c_str());
     }
@@ -752,21 +747,31 @@ void SPDKDevice::_aio_stop()
 void SPDKDevice::_aio_thread(int idx)
 {
     dout(10) << __func__ << " start" << dendl;
+    usleep(5000000);
+    void* p = nullptr;
+    mypair* mp = nullptr;
     std::unique_lock<std::mutex> l(aio_queue_locks[idx]);
+    l.unlock();
     while (!aio_stops[idx]) {
         if(queue_ts[idx]) {
-            if(aio_queues[idx].empty() && queue_ts[idx]->current_queue_depth == 0) {
-                aio_queue_conds[idx].wait(l);
-            }
             std::deque<std::pair<Task *, IOContext *>> tmp;
+	    l.lock();
             tmp.swap(aio_queues[idx]);
             l.unlock();
             for (auto& t : tmp) {
                 queue_ts[idx]->_aio_handle(t.first, t.second);
             }
-            queue_ts[idx]->_aio_check_completions();
-            l.lock();
         }
+	auto& dev_queue = gobal_queue_qairs.get_dev_queue(idx);
+
+        for (auto & q : dev_queue) {
+	    while (q && q->pop(p, 0) && p) {
+		mp = static_cast<mypair*>(p);
+                queue_ts[idx]->_aio_handle(mp->task, mp->ioc);
+		delete mp;
+            }
+	}
+	queue_ts[idx]->_aio_check_completions();
     }
     dout(10) << __func__ << " end" << dendl;
 }
@@ -790,16 +795,14 @@ void SPDKDevice::aio_submit(IOContext *ioc, bool fixed_thread)
         // Only need to push the first entry
         ioc->nvme_task_first = ioc->nvme_task_last = nullptr;
         {
-            if (fixed_thread) {
+            if (fixed_thread || gobal_queue_qairs.get_queue_qair(local_queue_id) == nullptr) {
                 std::lock_guard<std::mutex> l(aio_queue_locks[0]);
                 aio_queues[0].push_back(std::make_pair(t, ioc));
-                aio_queue_conds[0].notify_one();
             } else {
-                int idx = ioc->thread_idx;
-                assert(idx >= 0 && idx < thread_num);
-                std::lock_guard<std::mutex> l(aio_queue_locks[idx]);
-                aio_queues[idx].push_back(std::make_pair(t, ioc));
-                aio_queue_conds[idx].notify_one();
+		//std::cout << __func__ << " " << local_queue_id << std::endl;
+		//queue_qair* q = gobal_queue_qairs.get_queue_qair(local_queue_id);
+		//q->push(new mypair(t, ioc), 0);
+                gobal_queue_qairs.push(local_queue_id, new mypair(t, ioc), 0);
             }
         }
     }
@@ -915,10 +918,6 @@ int SPDKDevice::aio_read(
     }
     assert(is_valid_io(off, len));
 
-    if (ioc->thread_idx == -1) {
-        ioc->thread_idx = cur_thread;
-        cur_thread = (cur_thread + 1) % thread_num;
-    }
     Task *t = new Task(this, IOCommand::READ_COMMAND, off, len);
     char *buf = (char*)aligned_malloc(len, block_size);
     assert(buf);
@@ -953,10 +952,6 @@ int SPDKDevice::aio_read(
     }
     assert(is_valid_io(off, len));
 
-    if (ioc->thread_idx == -1) {
-        ioc->thread_idx = cur_thread;
-        cur_thread = (cur_thread + 1) % thread_num;
-    }
     Task *t = new Task(this, IOCommand::READ_COMMAND, off, len);
     assert((uint64_t)buf % block_size == 0);
     pbl->append(buf, len, true, false);
@@ -997,7 +992,7 @@ int SPDKDevice::read_random(uint64_t off, uint64_t len, char *buf, bool buffered
 
     ++ioc.num_pending;
     ioc.nvme_task_first = t;
-    aio_submit(&ioc);
+    aio_submit(&ioc, false);
     ioc.aio_wait();
 
     r = t->return_code;

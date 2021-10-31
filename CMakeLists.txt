@@ -9,7 +9,7 @@ set(HAVE_LIBAIO ${AIO_FOUND})
 if(HAVE_LIBAIO)
     ADD_DEFINITIONS(-DHAVE_LIBAIO)
 endif(HAVE_LIBAIO)
-find_package(Boost COMPONENTS program_options REQUIRED)
+find_package(Boost COMPONENTS program_options thread REQUIRED)
 
 option(WITH_SPDK "Enable SPDK" ON)
 if(WITH_SPDK)
