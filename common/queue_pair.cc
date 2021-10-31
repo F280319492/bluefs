@@ -2,7 +2,7 @@
 
 uint64_t queue_qairs::register_queue_pair()
 {
-    std::unique_lock<std::mutex> l(thread_seq_lock);
+    std::unique_lock<std::mutex> l(queue_seq_lock);
     int queue_num = queue_seq++;
     queue_qair* q = new queue_qair(queue_num);
     assert(queue_qair_hash_map.count(queue_num) == 0);
@@ -41,12 +41,12 @@ void queue_qairs::Init(int num)
 
 void queue_qairs::push(int queue_id, void* val, int idx)
 {
-    queue_qair_hash_map[queue_id][idx].push(val);
+    queue_qair_hash_map[queue_id]->push(val, idx);
 }
 
 void queue_qairs::pop(int queue_id, void* val, int idx)
 {
-    queue_qair_hash_map[queue_id].pop(val);
+    queue_qair_hash_map[queue_id]->pop(val, idx);
 }
 
 queue_qairs gobal_queue_qairs;

@@ -17,6 +17,12 @@ struct queue_qair {
     boost::lockfree::spsc_queue<void*, boost::lockfree::capacity<1024>> queues[2];
 
     queue_qair(uint64_t num) : queue_num(num) {}
+    void push(void* val, int idx) {
+        queues[idx].push(val);
+    }
+    void pop(void* val, int idx) {
+        queues[idx].pop(val);
+    }
 };
 
 struct queue_qairs {
@@ -34,7 +40,7 @@ struct queue_qairs {
     void push(int queue_id, void* val, int idx);
     void pop(int queue_id, void* val, int idx);
 
-    queue_qairs() : shard_num(0), thread_seq(0) {}
+    queue_qairs() : shard_num(0), queue_seq(0) {}
 };
 
 extern queue_qairs gobal_queue_qairs;

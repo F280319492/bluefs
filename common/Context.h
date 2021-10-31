@@ -9,7 +9,7 @@ class Context {
   virtual void finish(int r) = 0;
 
  public:
-  Context() {}
+  Context(int id) : queue_id(id) {}
   virtual ~Context() {}       // we want a virtual destructor!!!
   virtual void complete(int r) {
     finish(r);

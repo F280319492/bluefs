@@ -769,10 +769,8 @@ struct BlueFS::C_BlueFS_OnFinish : Context {
 
     C_BlueFS_OnFinish(BlueFS* bluefs_, FileReader *h_, char *out_,
                       size_t len_, rocksdb::Slice* result_, rocksdb::Context* ctx_) :
-            bluefs(bluefs_), h(h_), out(out_), len(len_), result(result_), ctx(ctx_),
-            ioc(nullptr), is_enqueue(false), queue_id(ctx->queue_id) {
-        read_len = 0;
-    }
+            Context(ctx_->queue_id), bluefs(bluefs_), h(h_), out(out_), len(len_),
+            result(result_), ctx(ctx_), ioc(nullptr), read_len(0), is_enqueue(false) {}
 
     ~C_BlueFS_OnFinish() {
         if (ioc) {
@@ -785,7 +783,7 @@ struct BlueFS::C_BlueFS_OnFinish : Context {
         if (!is_enqueue) {
             ret = r;
             is_enqueue = true;
-            gobal_queue_qairs[queue_id].push(queue_id, this, 1);
+            gobal_queue_qairs.push(queue_id, this, 1);
         } else {
             --h->file->num_reading;
             assert(read_len == len);
@@ -805,7 +803,6 @@ struct BlueFS::C_BlueFS_OnFinish : Context {
             }
 
             *result = rocksdb::Slice(out, read_len);
-            ctx->thread_id = this->thread_id;
             if(r == 0) {
                 ctx->complete(rocksdb::Status::OK());
             } else {

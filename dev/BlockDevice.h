@@ -45,7 +45,6 @@ public:
     std::atomic_int num_running = {0};
     bool allow_eio;
     Context *read_context;
-    int thread_idx;
     explicit IOContext(BlueFSContext* c, void *p, bool eio = false,
                         Context *context = nullptr)
         : cct(c), priv(p), allow_eio(eio), read_context(context), thread_idx(-1) {}
