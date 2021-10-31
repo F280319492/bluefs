@@ -2,7 +2,8 @@
 
 uint64_t queue_qairs::register_queue_pair()
 {
-    uint64_t thread_num = atomic_inc_return(&thread_seq);
+    std::unique_lock<std::mutex> l(thread_seq_lock);
+    uint64_t thread_num = thread_seq++;
     queue_qair* q = new queue_qair(thread_num);
     assert(queue_qair_hash_map.count(thread_num) == 0);
     queue_qair_hash_map[thread_num] = q;

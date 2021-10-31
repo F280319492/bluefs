@@ -13,14 +13,12 @@ struct queue_qair {
     uint64_t queue_num;
     boost::lockfree::spsc_queue<void*, boost::lockfree::capacity<1024>> queues[2];
 
-    queue_qair(uint64_t num) : queue_num(num) {
-        queues[0].clear();
-        queues[1].clear();
-    }
+    queue_qair(uint64_t num) : queue_num(num) {}
 };
 
 struct queue_qairs {
-    std::atomic<uint64_t> thread_seq;
+    uint64_t thread_seq;
+    std::mutex thread_seq_lock;
     std::unordered_map<int, queue_qair*> queue_qair_hash_map;
 
     uint64_t register_queue_pair();
