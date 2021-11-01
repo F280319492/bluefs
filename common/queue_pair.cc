@@ -1,6 +1,6 @@
 #include "queue_pair.h"
 
-uint64_t queue_qairs::register_queue_pair()
+int queue_qairs::register_queue_pair()
 {
     std::unique_lock<std::mutex> l(queue_seq_lock);
     int queue_num = queue_seq++;

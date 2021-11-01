@@ -790,8 +790,10 @@ void SPDKDevice::aio_submit(IOContext *ioc, bool fixed_thread)
                 aio_queues[0].push_back(std::make_pair(t, ioc));
                 aio_queue_conds[0].notify_one();
             } else {
-                int idx = ioc->thread_idx;
-                assert(idx >= 0 && idx < thread_num);
+                int idx = 0;
+                if (ioc->read_context) {
+                    idx = ioc->read_context->queue_id % thread_num;
+                }
                 std::lock_guard<std::mutex> l(aio_queue_locks[idx]);
                 aio_queues[idx].push_back(std::make_pair(t, ioc));
                 aio_queue_conds[idx].notify_one();
@@ -909,11 +911,7 @@ int SPDKDevice::aio_read(
         dout(0) << __func__ << " " << off << "~" << len << " ioc " << ioc << dendl;
     }
     assert(is_valid_io(off, len));
-
-    if (ioc->thread_idx == -1) {
-        ioc->thread_idx = cur_thread;
-        cur_thread = (cur_thread + 1) % thread_num;
-    }
+    
     Task *t = new Task(this, IOCommand::READ_COMMAND, off, len);
     char *buf = (char*)aligned_malloc(len, block_size);
     assert(buf);

@@ -770,7 +770,7 @@ struct BlueFS::C_BlueFS_OnFinish : Context {
     C_BlueFS_OnFinish(BlueFS* bluefs_, FileReader *h_, char *out_,
                       size_t len_, rocksdb::Slice* result_, rocksdb::Context* ctx_) :
             Context(ctx_->queue_id), bluefs(bluefs_), h(h_), out(out_), len(len_),
-            result(result_), ctx(ctx_), ioc(nullptr), read_len(0), is_enqueue(false) {}
+            result(result_), ctx(ctx_), read_len(0), ioc(nullptr), is_enqueue(false) {}
 
     ~C_BlueFS_OnFinish() {
         if (ioc) {

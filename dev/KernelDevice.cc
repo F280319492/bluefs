@@ -361,8 +361,10 @@ void KernelDevice::aio_submit(IOContext *ioc, bool fixed_thread)
         r = aio_queues[0].submit_batch(ioc->running_aios.begin(), e,
                                    ioc->num_running.load(), priv, &retries);
     } else {
-        int idx = ioc->thread_idx;
-        assert(idx >= 0 && idx < thread_num);
+        int idx = 0;
+        if (ioc->read_context) {
+            idx = ioc->read_context->queue_id % thread_num;
+        }
         r = aio_queues[idx].submit_batch(ioc->running_aios.begin(), e,
                                        ioc->num_running.load(), priv, &retries);
     }
@@ -526,11 +528,11 @@ int KernelDevice::aio_read(
     int r = 0;
 #ifdef HAVE_LIBAIO
     if (aio && dio) {
-        if (ioc->thread_idx == -1) {
-            ioc->thread_idx = cur_thread;
-            cur_thread = (cur_thread + 1) % thread_num;
+        int idx = 0;
+        if (ioc->read_context) {
+            idx = ioc->read_context->queue_id % thread_num;
         }
-        ioc->pending_aios.push_back(aio_t(ioc, fd_directs[ioc->thread_idx]));
+        ioc->pending_aios.push_back(aio_t(ioc, fd_directs[idx]));
         ++ioc->num_pending;
         aio_t& aio_s = ioc->pending_aios.back();
         aio_s.pread(off, len);
@@ -560,11 +562,11 @@ int KernelDevice::aio_read(
     int r = 0;
 #ifdef HAVE_LIBAIO
     if (aio && dio) {
-        if (ioc->thread_idx == -1) {
-            ioc->thread_idx = cur_thread;
-            cur_thread = (cur_thread + 1) % thread_num;
+        int idx = 0;
+        if (ioc->read_context) {
+            idx = ioc->read_context->queue_id % thread_num;
         }
-        ioc->pending_aios.push_back(aio_t(ioc, fd_directs[ioc->thread_idx]));
+        ioc->pending_aios.push_back(aio_t(ioc, fd_directs[idx]));
         ++ioc->num_pending;
         aio_t& aio_s = ioc->pending_aios.back();
         aio_s.pread(off, len, buf);

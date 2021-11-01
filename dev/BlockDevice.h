@@ -47,7 +47,7 @@ public:
     Context *read_context;
     explicit IOContext(BlueFSContext* c, void *p, bool eio = false,
                         Context *context = nullptr)
-        : cct(c), priv(p), allow_eio(eio), read_context(context), thread_idx(-1) {}
+        : cct(c), priv(p), allow_eio(eio), read_context(context) {}
 
     // no copying
     IOContext(const IOContext& other) = delete;
