@@ -44,9 +44,9 @@ void queue_qairs::push(int queue_id, void* val, int idx)
     queue_qair_hash_map[queue_id]->push(val, idx);
 }
 
-void queue_qairs::pop(int queue_id, void* val, int idx)
+bool queue_qairs::pop(int queue_id, void* val, int idx)
 {
-    queue_qair_hash_map[queue_id]->pop(val, idx);
+    return queue_qair_hash_map[queue_id]->pop(val, idx);
 }
 
 queue_qairs gobal_queue_qairs;

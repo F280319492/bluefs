@@ -911,7 +911,7 @@ int SPDKDevice::aio_read(
         dout(0) << __func__ << " " << off << "~" << len << " ioc " << ioc << dendl;
     }
     assert(is_valid_io(off, len));
-    
+
     Task *t = new Task(this, IOCommand::READ_COMMAND, off, len);
     char *buf = (char*)aligned_malloc(len, block_size);
     assert(buf);
@@ -946,10 +946,6 @@ int SPDKDevice::aio_read(
     }
     assert(is_valid_io(off, len));
 
-    if (ioc->thread_idx == -1) {
-        ioc->thread_idx = cur_thread;
-        cur_thread = (cur_thread + 1) % thread_num;
-    }
     Task *t = new Task(this, IOCommand::READ_COMMAND, off, len);
     assert((uint64_t)buf % block_size == 0);
     pbl->append(buf, len, true, false);

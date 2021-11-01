@@ -20,8 +20,8 @@ struct queue_qair {
     void push(void* val, int idx) {
         queues[idx].push(val);
     }
-    void pop(void* val, int idx) {
-        queues[idx].pop(val);
+    bool pop(void* val, int idx) {
+        return queues[idx].pop(val);
     }
 };
 
@@ -38,7 +38,7 @@ struct queue_qairs {
     std::vector<queue_qair*>& get_dev_queue(int idx);
     void Init(int num);
     void push(int queue_id, void* val, int idx);
-    void pop(int queue_id, void* val, int idx);
+    bool pop(int queue_id, void* val, int idx);
 
     queue_qairs() : shard_num(0), queue_seq(0) {}
 };
