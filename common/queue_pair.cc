@@ -7,7 +7,7 @@ int queue_qairs::register_queue_pair()
     queue_qair* q = new queue_qair(queue_num);
     assert(queue_qair_hash_map.count(queue_num) == 0);
     queue_qair_hash_map[queue_num] = q;
-    dev_queues[queue_num].push_back(q);
+    dev_queues[queue_num%shard_num].push_back(q);
     return queue_num;
 }
 
@@ -44,7 +44,7 @@ void queue_qairs::push(int queue_id, void* val, int idx)
     queue_qair_hash_map[queue_id]->push(val, idx);
 }
 
-bool queue_qairs::pop(int queue_id, void* val, int idx)
+bool queue_qairs::pop(int queue_id, void*& val, int idx)
 {
     return queue_qair_hash_map[queue_id]->pop(val, idx);
 }

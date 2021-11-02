@@ -139,6 +139,10 @@ public:
         fs->invalidate_cache(h->file, offset, length);
         return rocksdb::Status::OK();
     }
+
+    virtual size_t GetRequiredBufferAlignment() const override {
+        return 512;
+    }
 };
 
 
