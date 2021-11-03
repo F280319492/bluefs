@@ -17,7 +17,7 @@
 #include "common/Context.h"
 #include "common/aio.h"
 
-#define SPDK_PREFIX "spdk:"
+#define SPDK_PREFIX "trtype=PCIe traddr="
 
 #ifndef MAX_DEV_THREAD
 #define MAX_DEV_THREAD 5

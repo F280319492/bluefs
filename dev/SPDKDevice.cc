@@ -637,8 +637,6 @@ SPDKDevice::SPDKDevice(BlueFSContext* bct, aio_callback_t cb, void *cbpriv)
     }
     queue_ts.resize(thread_num);
     aio_queues.resize(thread_num);
-    //aio_queue_locks.resize(thread_num);
-    //aio_queue_conds.resize(thread_num);
     aio_stops.resize(thread_num);
     for (int i = 0; i < thread_num; i++) {
         queue_ts[i] = nullptr;
